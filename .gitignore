@@ -32,3 +32,6 @@ venv/
 # OS specific
 .DS_Store
 Thumbs.db
+
+# Ignore all root-level directories
+*/
