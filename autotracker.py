@@ -163,6 +163,7 @@ def main():
         os.makedirs(scenes_dir, exist_ok=True)
     except OSError as e:
         print(f"[ERROR] Could not create output folder \"{scenes_dir}\": {e}")
+        input("Press Enter to exit...")
         sys.exit(1)
 
     # Count videos
@@ -185,7 +186,6 @@ def main():
     print("--------------------------------------------------------------")
     print(f" All jobs finished – results are in \"{scenes_dir}\".")
     print("--------------------------------------------------------------")
-    input("Press Enter to exit...")
 
 if __name__ == "__main__":
     main()
