@@ -128,6 +128,7 @@ def create_animated_camera(json_path, global_scale=1, cam_name="Nerfstudio_Anima
     subnet.layoutChildren()
     cam.parm('vm_bgenable').set(1)
     cam.parm('vm_background').set(background_image_path)
+    cam.setInput(0, cam.parent().indirectInputs()[0])
     print(f"Success! Animated camera created at: {cam.path()}")
     
 if __name__ == "__main__":
