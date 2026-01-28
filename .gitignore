@@ -35,3 +35,9 @@ Thumbs.db
 
 # Ignore all root-level directories
 */
+
+# Exceptions
+!demo-test/
+demo-test/*
+!demo-test/walking-forest/
+!demo-test/walking-forest/**

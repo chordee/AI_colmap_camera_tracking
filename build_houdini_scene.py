@@ -132,13 +132,18 @@ def create_animated_camera(json_path, global_scale=1, cam_name="Nerfstudio_Anima
     print(f"Success! Animated camera created at: {cam.path()}")
     
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        create_animated_camera(json_path=sys.argv[1])
-    else:
-        print("Usage: hython build_houdinI_scene.py <json_path>")
-        
+    if len(sys.argv) < 4:
+        print("Usage: hython build_houdini_scene.py <json_path> <point_cloud_path> <output_hip_path>")
+        sys.exit(1)
+
+    # Handle paths (support relative or absolute)
+    json_path = os.path.abspath(sys.argv[1])
+    point_cloud_path = os.path.abspath(sys.argv[2])
+    output_hip_path = os.path.abspath(sys.argv[3])
+
+    create_animated_camera(json_path=json_path)
     
     scene = hou.node("/obj").createNode('geo', 'Scene')
     file_node = scene.createNode('file', 'Import_Point_Cloud')
-    file_node.parm('file').set(sys.argv[2])
-    hou.hipFile.save(sys.argv[3])
+    file_node.parm('file').set(point_cloud_path)
+    hou.hipFile.save(output_hip_path)

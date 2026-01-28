@@ -18,8 +18,8 @@ Ensure the following tools are installed and available in your system's PATH:
 
 1.  **Python 3.x**
 2.  **FFmpeg**: For video processing.
-3.  **COLMAP**: For feature extraction and matching.
-4.  **GLOMAP**: For sparse reconstruction (Mapper).
+3.  **[COLMAP](https://github.com/colmap/colmap)**: For feature extraction and matching.
+4.  **[GLOMAP](https://github.com/colmap/glomap)**: For sparse reconstruction (Mapper).
 5.  **Houdini (hython)**: Required if you want to generate Houdini scenes (`build_houdini_scene.py`).
 
 ### Python Dependencies
@@ -52,6 +52,21 @@ python run_autotracker.py <input_videos_dir> <output_dir> --scale <scale_factor>
 ```bash
 python run_autotracker.py ./videos ./output --scale 0.5 --hfs "C:/Program Files/Side Effects Software/Houdini 20.0.625"
 ```
+
+## Quick Start / Demo
+
+A batch script `run_demo_test.bat` is included to easily test the pipeline using the provided demo data.
+
+```bash
+run_demo_test.bat
+```
+
+This script will:
+1.  Process the data in `./demo-test/walking-forest`
+2.  Output results to `./demo-test/walking-forest-output`
+3.  Attempt to generate a Houdini scene (you may need to edit the `.bat` file to point to your specific Houdini installation or use flags if `hython` is not in your PATH).
+
+You can verify the installation and dependencies by running this demo.
 
 ## Pipeline Steps
 
@@ -86,3 +101,8 @@ For each video processed, a folder is created in the output directory containing
 *   `points3D.ply`: Point cloud file.
 *   `undistort/`: Undistorted images and transforms.
 *   `<project_name>.hip`: Houdini project file.
+
+## References
+
+*   This project was inspired by and references: [Video Link](https://youtu.be/xx85eyN1Xc0?si=icXcANMb06k-v9dE)
+*   Demo test video source: [Pexels - Tranquil Autumn Forest Walkway Path](https://www.pexels.com/video/tranquil-autumn-forest-walkway-path-29142343/)
