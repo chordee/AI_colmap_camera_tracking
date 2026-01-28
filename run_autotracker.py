@@ -10,6 +10,7 @@ def main():
     parser.add_argument("output_path", help="Path to output directory")
     parser.add_argument("--scale", type=float, default=0.5, help="Scale argument (default: 0.5)")
     parser.add_argument("--skip-houdini", action="store_true", help="Skip Houdini scene generation")
+    parser.add_argument("--hfs", help="Path to Houdini installation (optional)")
 
     args = parser.parse_args()
 
@@ -114,6 +115,14 @@ def main():
     if not args.skip_houdini:
         houdini_script = os.path.join(script_dir, "build_houdini_scene.py")
         print("Scanning output directory for Houdini scene generation...")
+
+        # Determine hython executable
+        if args.hfs:
+            hython_exec = os.path.join(args.hfs, "bin", "hython")
+            if sys.platform == "win32":
+                hython_exec += ".exe"
+        else:
+            hython_exec = "hython"
         
         subfolders = [f for f in os.listdir(output_path) if os.path.isdir(os.path.join(output_path, f))]
         for folder in subfolders:
@@ -124,14 +133,14 @@ def main():
             hip_path = os.path.join(folder_path, f"{folder}.hip").replace("\\", "/")
 
             if os.path.exists(ply_path) and os.path.exists(json_path):
-                cmd_houdini = ["hython", houdini_script, json_path, ply_path, hip_path]
+                cmd_houdini = [hython_exec, houdini_script, json_path, ply_path, hip_path]
                 print(f"Running: {' '.join(cmd_houdini)}")
                 try:
                     subprocess.run(cmd_houdini, check=True)
                 except subprocess.CalledProcessError:
                     print(f"[ERROR] build_houdini_scene.py failed for {folder}.")
                 except FileNotFoundError:
-                    print("[ERROR] hython executable not found. Ensure Houdini is in PATH.")
+                    print(f"[ERROR] {hython_exec} executable not found. Ensure Houdini is in PATH or --hfs is correct.")
     else:
         print("Skipping Houdini scene generation as per argument.")
 

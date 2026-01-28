@@ -37,18 +37,19 @@ pip install numpy opencv-python
 The main entry point is `run_autotracker.py`.
 
 ```bash
-python run_autotracker.py <input_videos_dir> <output_dir> --scale <scale_factor> [--skip-houdini]
+python run_autotracker.py <input_videos_dir> <output_dir> --scale <scale_factor> [--skip-houdini] [--hfs <houdini_path>]
 ```
 
 *   `input_videos_dir`: Directory containing your source video files (e.g., `.mp4`, `.mov`).
 *   `output_dir`: Directory where the results (images, sparse models, database) will be saved.
 *   `--scale`: (Optional) Image scaling factor (default: `0.5`).
 *   `--skip-houdini`: (Optional) Skip the generation of the Houdini `.hip` scene file.
+*   `--hfs`: (Optional) Path to your Houdini installation directory (e.g., `C:\Program Files\Side Effects Software\Houdini 20.0.xxx`). If not provided, the script assumes `hython` is in your PATH.
 
 ### Example
 
 ```bash
-python run_autotracker.py ./videos ./output --scale 0.5 --skip-houdini
+python run_autotracker.py ./videos ./output --scale 0.5 --hfs "C:/Program Files/Side Effects Software/Houdini 20.0.625"
 ```
 
 ## Pipeline Steps
