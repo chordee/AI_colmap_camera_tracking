@@ -11,6 +11,7 @@ def parse_args():
     parser.add_argument("--output_dir", type=str, default="restored_output", help="Directory to save the restored images.")
     parser.add_argument("--image_dir", type=str, default=None, help="Override the directory to search for input images.")
     parser.add_argument("--undistort", action="store_true", help="Undistort images (restore). Default is to apply distortion (reverse).")
+    parser.add_argument("--exr", action="store_true", help="Process .exr files in the directory instead of frames in JSON. Default off.")
     return parser.parse_args()
 
 def main():
@@ -120,11 +121,6 @@ def main():
         print(f"Created output directory: {args.output_dir}")
 
     # 6. Process Images
-    frames = data.get('frames', [])
-    if not frames:
-        print("No frames found in JSON 'frames' list.")
-        sys.exit(0)
-
     # Determine base directory for images
     if args.image_dir:
         base_dir = args.image_dir
@@ -132,31 +128,56 @@ def main():
     else:
         base_dir = os.path.dirname(os.path.abspath(args.json_path))
 
-    print(f"Starting processing of {len(frames)} images...")
+    # Prepare file list and read flags
+    if args.exr:
+        print(f"EXR Mode Enabled: Scanning {base_dir} for .exr files...")
+        read_flags = cv2.IMREAD_UNCHANGED
+        # Find all .exr files in base_dir
+        files_to_process = [f for f in os.listdir(base_dir) if f.lower().endswith('.exr')]
+        files_to_process.sort() # Ensure consistent order
+        if not files_to_process:
+             print(f"No .exr files found in {base_dir}")
+             sys.exit(0)
+    else:
+        frames = data.get('frames', [])
+        if not frames:
+            print("No frames found in JSON 'frames' list.")
+            sys.exit(0)
+        files_to_process = frames
+        read_flags = cv2.IMREAD_COLOR
 
-    for i, frame in enumerate(frames):
-        # Handle file paths that might contain mixed slashes (windows/unix)
-        rel_path = frame['file_path']
-        rel_path = rel_path.replace('\\', os.sep).replace('/', os.sep)
-        
-        # If path starts with ./, remove it to join cleanly
-        if rel_path.startswith(f'.{os.sep}'):
-            rel_path = rel_path[2:]
+    print(f"Starting processing of {len(files_to_process)} images...")
+
+    for i, item in enumerate(files_to_process):
+        # Determine image path based on mode
+        if args.exr:
+            # item is just the filename
+            rel_path = item
+            image_path = os.path.join(base_dir, rel_path)
+        else:
+            # item is a frame dict
+            rel_path = item['file_path']
+            rel_path = rel_path.replace('\\', os.sep).replace('/', os.sep)
             
-        image_path = os.path.join(base_dir, rel_path)
+            # If path starts with ./, remove it to join cleanly
+            if rel_path.startswith(f'.{os.sep}'):
+                rel_path = rel_path[2:]
+                
+            image_path = os.path.join(base_dir, rel_path)
 
-        # Fallback: if user specified an image_dir, they might have pointed
-        # directly to the flat folder containing images, ignoring the internal structure.
-        if args.image_dir and not os.path.exists(image_path):
-            flat_path = os.path.join(base_dir, os.path.basename(rel_path))
-            if os.path.exists(flat_path):
-                image_path = flat_path
+            # Fallback: if user specified an image_dir, they might have pointed
+            # directly to the flat folder containing images, ignoring the internal structure.
+            if args.image_dir and not os.path.exists(image_path):
+                flat_path = os.path.join(base_dir, os.path.basename(rel_path))
+                if os.path.exists(flat_path):
+                    image_path = flat_path
         
         if not os.path.exists(image_path):
             print(f"  [Skipping] Image not found: {image_path}")
             continue
 
-        img = cv2.imread(image_path)
+        # Read image
+        img = cv2.imread(image_path, read_flags)
         if img is None:
             print(f"  [Skipping] Could not read image: {image_path}")
             continue
@@ -169,11 +190,20 @@ def main():
         # Save result
         filename = os.path.basename(image_path)
         save_path = os.path.join(args.output_dir, filename)
-        cv2.imwrite(save_path, processed_img)
+        
+        save_params = []
+        if filename.lower().endswith('.exr'):
+            # Attempt to match the output EXR type to the processing data type
+            if processed_img.dtype == np.float32:
+                save_params = [cv2.IMWRITE_EXR_TYPE, cv2.IMWRITE_EXR_TYPE_FLOAT]
+            elif processed_img.dtype == np.float16:
+                save_params = [cv2.IMWRITE_EXR_TYPE, cv2.IMWRITE_EXR_TYPE_HALF]
+
+        cv2.imwrite(save_path, processed_img, save_params)
         
         # Simple progress indicator
         if (i + 1) % 10 == 0:
-            print(f"  Processed {i + 1}/{len(frames)} images...")
+            print(f"  Processed {i + 1}/{len(files_to_process)} images...")
 
     print("Processing complete.")
 

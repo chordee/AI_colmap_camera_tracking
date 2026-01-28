@@ -37,17 +37,18 @@ pip install numpy opencv-python
 The main entry point is `run_autotracker.py`.
 
 ```bash
-python run_autotracker.py <input_videos_dir> <output_dir> --scale <scale_factor>
+python run_autotracker.py <input_videos_dir> <output_dir> --scale <scale_factor> [--skip-houdini]
 ```
 
 *   `input_videos_dir`: Directory containing your source video files (e.g., `.mp4`, `.mov`).
 *   `output_dir`: Directory where the results (images, sparse models, database) will be saved.
 *   `--scale`: (Optional) Image scaling factor (default: `0.5`).
+*   `--skip-houdini`: (Optional) Skip the generation of the Houdini `.hip` scene file.
 
 ### Example
 
 ```bash
-python run_autotracker.py ./videos ./output --scale 0.5
+python run_autotracker.py ./videos ./output --scale 0.5 --skip-houdini
 ```
 
 ## Pipeline Steps
@@ -69,7 +70,7 @@ python run_autotracker.py ./videos ./output --scale 0.5
 *   `autotracker.py`: Handles the core photogrammetry tasks (FFmpeg, COLMAP, GLOMAP).
 *   `colmap2nerf.py`: Converts COLMAP data to the standard NeRF `transforms.json` format.
 *   `undistortionNerfstudioColmap.py`: Handles image undistortion based on the calculated camera models.
-*   `restore_distortion.py`: A utility script to restore (undistort) or reverse (distort) images based on calibration JSON.
+*   `restore_distortion.py`: A utility script to restore (undistort) or reverse (distort) images based on calibration JSON. Supports EXR processing via `--exr`.
 *   `build_houdini_scene.py`: Generates a `.hip` file with the point cloud and cameras loaded.
 
 ## Output Structure

@@ -9,6 +9,7 @@ def main():
     parser.add_argument("input_path", help="Path to input directory (videos)")
     parser.add_argument("output_path", help="Path to output directory")
     parser.add_argument("--scale", type=float, default=0.5, help="Scale argument (default: 0.5)")
+    parser.add_argument("--skip-houdini", action="store_true", help="Skip Houdini scene generation")
 
     args = parser.parse_args()
 
@@ -110,26 +111,29 @@ def main():
             print(f"[ERROR] undistortionNerfstudioColmap.py failed for {folder_name}.")
 
     # Command 6: Run build_houdini_scene.py
-    houdini_script = os.path.join(script_dir, "build_houdini_scene.py")
-    print("Scanning output directory for Houdini scene generation...")
-    
-    subfolders = [f for f in os.listdir(output_path) if os.path.isdir(os.path.join(output_path, f))]
-    for folder in subfolders:
-        folder_path = os.path.join(output_path, folder)
-        ply_path = os.path.join(folder_path, "points3D.ply").replace("\\", "/")
-        undistort_dir = os.path.join(folder_path, "undistort")
-        json_path = os.path.join(undistort_dir, "transforms_undistorted.json").replace("\\", "/")
-        hip_path = os.path.join(folder_path, f"{folder}.hip").replace("\\", "/")
+    if not args.skip_houdini:
+        houdini_script = os.path.join(script_dir, "build_houdini_scene.py")
+        print("Scanning output directory for Houdini scene generation...")
+        
+        subfolders = [f for f in os.listdir(output_path) if os.path.isdir(os.path.join(output_path, f))]
+        for folder in subfolders:
+            folder_path = os.path.join(output_path, folder)
+            ply_path = os.path.join(folder_path, "points3D.ply").replace("\\", "/")
+            undistort_dir = os.path.join(folder_path, "undistort")
+            json_path = os.path.join(undistort_dir, "transforms_undistorted.json").replace("\\", "/")
+            hip_path = os.path.join(folder_path, f"{folder}.hip").replace("\\", "/")
 
-        if os.path.exists(ply_path) and os.path.exists(json_path):
-            cmd_houdini = ["hython", houdini_script, json_path, ply_path, hip_path]
-            print(f"Running: {' '.join(cmd_houdini)}")
-            try:
-                subprocess.run(cmd_houdini, check=True)
-            except subprocess.CalledProcessError:
-                print(f"[ERROR] build_houdini_scene.py failed for {folder}.")
-            except FileNotFoundError:
-                print("[ERROR] hython executable not found. Ensure Houdini is in PATH.")
+            if os.path.exists(ply_path) and os.path.exists(json_path):
+                cmd_houdini = ["hython", houdini_script, json_path, ply_path, hip_path]
+                print(f"Running: {' '.join(cmd_houdini)}")
+                try:
+                    subprocess.run(cmd_houdini, check=True)
+                except subprocess.CalledProcessError:
+                    print(f"[ERROR] build_houdini_scene.py failed for {folder}.")
+                except FileNotFoundError:
+                    print("[ERROR] hython executable not found. Ensure Houdini is in PATH.")
+    else:
+        print("Skipping Houdini scene generation as per argument.")
 
 if __name__ == "__main__":
     main()
