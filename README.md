@@ -37,7 +37,7 @@ pip install numpy opencv-python
 The main entry point is `run_autotracker.py`.
 
 ```bash
-python run_autotracker.py <input_videos_dir> <output_dir> --scale <scale_factor> [--skip-houdini] [--hfs <houdini_path>]
+python run_autotracker.py <input_videos_dir> <output_dir> --scale <scale_factor> [--skip-houdini] [--hfs <houdini_path>] [--multi-cams]
 ```
 
 *   `input_videos_dir`: Directory containing your source video files (e.g., `.mp4`, `.mov`).
@@ -45,6 +45,7 @@ python run_autotracker.py <input_videos_dir> <output_dir> --scale <scale_factor>
 *   `--scale`: (Optional) Image scaling factor (default: `0.5`).
 *   `--skip-houdini`: (Optional) Skip the generation of the Houdini `.hip` scene file.
 *   `--hfs`: (Optional) Path to your Houdini installation directory (e.g., `C:\Program Files\Side Effects Software\Houdini 20.0.xxx`). If not provided, the script assumes `hython` is in your PATH.
+*   `--multi-cams`: (Optional) If set, COLMAP will treat the input as multiple cameras (one per folder/video) instead of a single shared camera. Useful if videos were shot with different devices or zoom levels.
 
 ### Example
 

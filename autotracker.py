@@ -28,7 +28,7 @@ def run_command(cmd, error_msg, quiet=False):
         print(error_msg)
         return False
 
-def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mask_path=None):
+def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mask_path=None, multi_cams=False):
     # Get base name and extension
     base_name = os.path.splitext(os.path.basename(video_path))[0]
     ext = os.path.splitext(video_path)[1]
@@ -81,9 +81,14 @@ def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mas
         COLMAP, "feature_extractor",
         "--database_path", database_path,
         "--image_path", img_dir,
-        "--ImageReader.single_camera", "1",
         "--SiftExtraction.use_gpu", "1"
     ]
+    
+    if multi_cams:
+        cmd_colmap_fe.extend(["--ImageReader.single_camera_per_folder", "1"])
+    else:
+        cmd_colmap_fe.extend(["--ImageReader.single_camera", "1"])
+
     if mask_path:
         cmd_colmap_fe.extend(["--ImageReader.mask_path", mask_path])
 
@@ -141,6 +146,7 @@ def main():
     parser.add_argument("--overlap", type=int, default=12, help="Sequential matching overlap (default: 12)")
     parser.add_argument("--scale", type=float, default=1.0, help="Image scaling factor (default: 1.0)")
     parser.add_argument("--mask", help="Path to mask directory (optional)")
+    parser.add_argument("--multi-cams", action="store_true", help="Allow processing multiple videos with different camera settings")
     
     # If no arguments provided, print help
     if len(sys.argv) == 1:
@@ -181,7 +187,7 @@ def main():
     print("==============================================================")
 
     for idx, video_file in enumerate(video_files, 1):
-        process_video(os.path.join(videos_dir, video_file), scenes_dir, idx, total, overlap=args.overlap, scale=args.scale, mask_path=mask_path)
+        process_video(os.path.join(videos_dir, video_file), scenes_dir, idx, total, overlap=args.overlap, scale=args.scale, mask_path=mask_path, multi_cams=args.multi_cams)
 
     print("--------------------------------------------------------------")
     print(f" All jobs finished – results are in \"{scenes_dir}\".")

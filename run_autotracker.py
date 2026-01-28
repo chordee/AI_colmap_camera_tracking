@@ -11,6 +11,7 @@ def main():
     parser.add_argument("--scale", type=float, default=0.5, help="Scale argument (default: 0.5)")
     parser.add_argument("--skip-houdini", action="store_true", help="Skip Houdini scene generation")
     parser.add_argument("--hfs", help="Path to Houdini installation (optional)")
+    parser.add_argument("--multi-cams", action="store_true", help="Allow processing multiple videos with different camera settings")
 
     args = parser.parse_args()
 
@@ -33,6 +34,8 @@ def main():
 
     # Command 1: python autotracker.py <input_path> <output_path> --scale <scale>
     cmd1 = [sys.executable, autotracker_script, input_path, output_path, "--scale", str(scale)]
+    if args.multi_cams:
+        cmd1.append("--multi-cams")
     print(f"Running: {' '.join(cmd1)}")
     try:
         subprocess.run(cmd1, check=True)
