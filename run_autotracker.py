@@ -14,6 +14,7 @@ def main():
     parser.add_argument("--multi-cams", action="store_true", help="Allow processing multiple videos with different camera settings")
     parser.add_argument("--acescg", action="store_true", help="Convert input ACEScg colorspace to sRGB")
     parser.add_argument("--lut", help="Path to .cube LUT file for color conversion (optional)")
+    parser.add_argument("--mask", help="Path to mask directory root (optional)")
 
     args = parser.parse_args()
 
@@ -42,6 +43,8 @@ def main():
         cmd1.append("--acescg")
     if args.lut:
         cmd1.extend(["--lut", args.lut])
+    if args.mask:
+        cmd1.extend(["--mask", args.mask])
         
     print(f"Running: {' '.join(cmd1)}")
     try:

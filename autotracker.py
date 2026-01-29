@@ -55,6 +55,54 @@ def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mas
         print(f"        [ERROR] Could not create directories: {e}")
         return
 
+    # --- Mask Detection & Preparation Logic ---
+    final_mask_path = None
+    
+    # 1. Try deriving from --mask argument
+    if mask_path:
+        # Case A: mask_path is a root containing <basename>_mask
+        candidate = os.path.join(mask_path, f"{base_name}_mask")
+        if os.path.isdir(candidate):
+            final_mask_path = candidate
+        # Case B: mask_path itself is the directory (fallback/direct mode)
+        elif os.path.isdir(mask_path):
+             final_mask_path = mask_path
+
+    # 2. Try auto-detection in video directory
+    if not final_mask_path:
+        candidate = os.path.join(os.path.dirname(video_path), f"{base_name}_mask")
+        if os.path.isdir(candidate):
+            final_mask_path = candidate
+
+    # 3. Format check and fix
+    if final_mask_path:
+        print(f"        • Mask directory: {final_mask_path}")
+        # Check for *.jpg.png
+        has_jpg_png = glob.glob(os.path.join(final_mask_path, "*.jpg.png"))
+        
+        # If no .jpg.png found, try to rename .png files
+        if not has_jpg_png:
+            pngs = glob.glob(os.path.join(final_mask_path, "*.png"))
+            if pngs:
+                print(f"        • Formatting mask filenames (adding .jpg extension)...")
+                renamed_count = 0
+                for p in pngs:
+                    if p.lower().endswith(".jpg.png"): 
+                        continue
+                    
+                    # Rename frame_XXXXX.png -> frame_XXXXX.jpg.png
+                    new_name = p[:-4] + ".jpg.png"
+                    try:
+                        os.rename(p, new_name)
+                        renamed_count += 1
+                    except OSError as e:
+                        print(f"          [WARN] Failed to rename {os.path.basename(p)}: {e}")
+                print(f"          -> Renamed {renamed_count} files.")
+            else:
+                # Folder exists but no PNGs found?
+                print(f"          [WARN] Mask directory exists but contains no .png files. Ignoring.")
+                final_mask_path = None
+
     # 1) Extract every frame
     print("        [1/4] Extracting frames ...")
     frame_pattern = os.path.join(img_dir, "frame_%06d.jpg")
@@ -109,8 +157,8 @@ def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mas
     else:
         cmd_colmap_fe.extend(["--ImageReader.single_camera", "1"])
 
-    if mask_path:
-        cmd_colmap_fe.extend(["--ImageReader.mask_path", mask_path])
+    if final_mask_path:
+        cmd_colmap_fe.extend(["--ImageReader.mask_path", final_mask_path])
 
     if not run_command(cmd_colmap_fe, f"        × feature_extractor failed – skipping \"{base_name}\"."):
         return
