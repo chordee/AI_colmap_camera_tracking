@@ -140,9 +140,17 @@ def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mas
         return
 
     # Check if frames were extracted
-    if not glob.glob(os.path.join(img_dir, "*.jpg")):
+    all_images = glob.glob(os.path.join(img_dir, "*.jpg"))
+    if not all_images:
         print(f"        × No frames extracted – skipping \"{base_name}\".")
         return
+
+    # Optional: Check mask count consistency
+    if final_mask_path:
+        all_masks = glob.glob(os.path.join(final_mask_path, "*.jpg.png"))
+        if len(all_images) != len(all_masks):
+            print(f"        [WARN] Frame count mismatch! Images: {len(all_images)}, Masks: {len(all_masks)}")
+            print(f"               COLMAP will only apply masks to matching filenames.")
 
     # 2) Feature extraction (COLMAP)
     print("        [2/4] COLMAP feature_extractor ...")
