@@ -68,10 +68,10 @@ def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mas
     
     # ACEScg to sRGB conversion (Generic transform using zscale)
     if acescg:
-        # tin=linear (Linear input), t=iec61966_2_1 (sRGB EOTF output)
+        # tin=linear (Linear input), t=iec61966-2-1 (sRGB EOTF output)
         # pin=bt2020 (ACEScg is AP1, bt2020 is closest standard primary in zscale)
         # p=bt709 (sRGB/Rec709 primaries)
-        filters.append("zscale=tin=linear:t=iec61966_2_1:pin=bt2020:p=bt709:min=bt2020:m=bt709")
+        filters.append("zscale=tin=linear:t=iec61966-2-1:pin=bt2020:p=bt709:min=bt2020nc:m=bt709")
 
     # Apply LUT if provided
     if lut_path:
