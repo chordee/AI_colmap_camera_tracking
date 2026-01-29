@@ -1,0 +1,11 @@
+[project]
+name = "ai-colmap-camera-tracking"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=2.4.1",
+    "opencv-python>=4.13.0.90",
+    "tqdm>=4.67.1",
+]
