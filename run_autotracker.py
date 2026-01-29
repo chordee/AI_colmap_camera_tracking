@@ -12,6 +12,8 @@ def main():
     parser.add_argument("--skip-houdini", action="store_true", help="Skip Houdini scene generation")
     parser.add_argument("--hfs", help="Path to Houdini installation (optional)")
     parser.add_argument("--multi-cams", action="store_true", help="Allow processing multiple videos with different camera settings")
+    parser.add_argument("--acescg", action="store_true", help="Convert input ACEScg colorspace to sRGB")
+    parser.add_argument("--lut", help="Path to .cube LUT file for color conversion (optional)")
 
     args = parser.parse_args()
 
@@ -36,6 +38,11 @@ def main():
     cmd1 = [sys.executable, autotracker_script, input_path, output_path, "--scale", str(scale)]
     if args.multi_cams:
         cmd1.append("--multi-cams")
+    if args.acescg:
+        cmd1.append("--acescg")
+    if args.lut:
+        cmd1.extend(["--lut", args.lut])
+        
     print(f"Running: {' '.join(cmd1)}")
     try:
         subprocess.run(cmd1, check=True)

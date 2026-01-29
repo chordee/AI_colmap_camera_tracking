@@ -18,6 +18,7 @@ def run_command(cmd, error_msg, quiet=False):
             kwargs['stderr'] = subprocess.DEVNULL
         
         # Run command
+        # print(f"DEBUG: Running command: {' '.join(cmd)}")
         subprocess.run(cmd, check=True, **kwargs)
         return True
     except subprocess.CalledProcessError:
@@ -28,7 +29,7 @@ def run_command(cmd, error_msg, quiet=False):
         print(error_msg)
         return False
 
-def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mask_path=None, multi_cams=False):
+def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mask_path=None, multi_cams=False, acescg=False, lut_path=None):
     # Get base name and extension
     base_name = os.path.splitext(os.path.basename(video_path))[0]
     ext = os.path.splitext(video_path)[1]
@@ -62,8 +63,27 @@ def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mas
         "-qscale:v", "2"
     ]
     
+    # Build video filters
+    filters = []
+    
+    # ACEScg to sRGB conversion (Generic transform using zscale)
+    if acescg:
+        # tin=linear (Linear input), t=iec61966_2_1 (sRGB EOTF output)
+        # pin=bt2020 (ACEScg is AP1, bt2020 is closest standard primary in zscale)
+        # p=bt709 (sRGB/Rec709 primaries)
+        filters.append("zscale=tin=linear:t=iec61966_2_1:pin=bt2020:p=bt709:min=bt2020:m=bt709")
+
+    # Apply LUT if provided
+    if lut_path:
+        # Use lut3d filter for .cube files
+        safe_lut_path = lut_path.replace("\\", "/") # FFmpeg filters prefer forward slashes
+        filters.append(f"lut3d='{safe_lut_path}'")
+
     if scale != 1.0:
-        cmd_ffmpeg.extend(["-vf", f"scale=iw*{scale}:ih*{scale}"])
+        filters.append(f"scale=iw*{scale}:ih*{scale}")
+
+    if filters:
+        cmd_ffmpeg.extend(["-vf", ",".join(filters)])
 
     cmd_ffmpeg.append(frame_pattern)
 
@@ -147,6 +167,8 @@ def main():
     parser.add_argument("--scale", type=float, default=1.0, help="Image scaling factor (default: 1.0)")
     parser.add_argument("--mask", help="Path to mask directory (optional)")
     parser.add_argument("--multi-cams", action="store_true", help="Allow processing multiple videos with different camera settings")
+    parser.add_argument("--acescg", action="store_true", help="Convert input ACEScg colorspace to sRGB")
+    parser.add_argument("--lut", help="Path to .cube LUT file for color conversion (optional)")
     
     # If no arguments provided, print help
     if len(sys.argv) == 1:
@@ -158,6 +180,7 @@ def main():
     videos_dir = os.path.abspath(args.videos_dir)
     scenes_dir = os.path.abspath(args.scenes_dir)
     mask_path = os.path.abspath(args.mask) if args.mask else None
+    lut_path = os.path.abspath(args.lut) if args.lut else None
 
     # Ensure required folders exist
     if not os.path.isdir(videos_dir):
@@ -187,7 +210,18 @@ def main():
     print("==============================================================")
 
     for idx, video_file in enumerate(video_files, 1):
-        process_video(os.path.join(videos_dir, video_file), scenes_dir, idx, total, overlap=args.overlap, scale=args.scale, mask_path=mask_path, multi_cams=args.multi_cams)
+        process_video(
+            os.path.join(videos_dir, video_file), 
+            scenes_dir, 
+            idx, 
+            total, 
+            overlap=args.overlap, 
+            scale=args.scale, 
+            mask_path=mask_path, 
+            multi_cams=args.multi_cams,
+            acescg=args.acescg,
+            lut_path=lut_path
+        )
 
     print("--------------------------------------------------------------")
     print(f" All jobs finished – results are in \"{scenes_dir}\".")
