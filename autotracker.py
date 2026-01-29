@@ -70,9 +70,15 @@ def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mas
 
     # 2. Try auto-detection in video directory
     if not final_mask_path:
-        candidate = os.path.join(os.path.dirname(video_path), f"{base_name}_mask")
-        if os.path.isdir(candidate):
-            final_mask_path = candidate
+        # Priority A: Check in a "mask" subfolder (e.g., video_dir/mask/basename_mask)
+        candidate_sub = os.path.join(os.path.dirname(video_path), "mask", f"{base_name}_mask")
+        # Priority B: Check sibling directory (e.g., video_dir/basename_mask)
+        candidate_sibling = os.path.join(os.path.dirname(video_path), f"{base_name}_mask")
+        
+        if os.path.isdir(candidate_sub):
+            final_mask_path = candidate_sub
+        elif os.path.isdir(candidate_sibling):
+            final_mask_path = candidate_sibling
 
     # 3. Format check and fix
     if final_mask_path:
