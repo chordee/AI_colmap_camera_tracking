@@ -55,9 +55,7 @@ python run_autotracker.py <input_videos_dir> <output_dir> --scale <scale_factor>
 The pipeline supports automatic detection of image masks for reconstruction (e.g., for moving objects or water).
 
 **Masking Rules:**
-1.  **Auto-Detection:** For a video file named `shot01.mp4`, the script automatically looks for a mask directory in the following order:
-    *   `mask/shot01_mask/` (a subfolder named `mask` inside the video directory).
-    *   `shot01_mask/` (alongside the video file).
+1.  **Auto-Detection:** For a video file named `shot01.mp4`, the script automatically looks for a **sibling directory** named `shot01_mask` (located alongside the video file).
 2.  **Custom Root:** If `--mask <path>` is provided, the script will look for `<video_name>_mask` inside that specified path.
 3.  **Filename Format:** 
     *   Masks must be PNG files.
