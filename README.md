@@ -37,7 +37,7 @@ pip install numpy opencv-python
 The main entry point is `run_autotracker.py`.
 
 ```bash
-python run_autotracker.py <input_videos_dir> <output_dir> --scale <scale_factor> [--skip-houdini] [--hfs <houdini_path>] [--multi-cams]
+python run_autotracker.py <input_videos_dir> <output_dir> --scale <scale_factor> [--skip-houdini] [--hfs <houdini_path>] [--multi-cams] [--acescg] [--lut <lut_file>]
 ```
 
 *   `input_videos_dir`: Directory containing your source video files (e.g., `.mp4`, `.mov`).
@@ -46,6 +46,8 @@ python run_autotracker.py <input_videos_dir> <output_dir> --scale <scale_factor>
 *   `--skip-houdini`: (Optional) Skip the generation of the Houdini `.hip` scene file.
 *   `--hfs`: (Optional) Path to your Houdini installation directory (e.g., `C:\Program Files\Side Effects Software\Houdini 20.0.xxx`). If not provided, the script assumes `hython` is in your PATH.
 *   `--multi-cams`: (Optional) If set, COLMAP will treat the input as multiple cameras (one per folder/video) instead of a single shared camera. Useful if videos were shot with different devices or zoom levels.
+*   `--acescg`: (Optional) Converts input video from ACEScg color space to sRGB (using zscale filter).
+*   `--lut`: (Optional) Path to a `.cube` LUT file for custom color space conversion.
 
 ### Example
 
