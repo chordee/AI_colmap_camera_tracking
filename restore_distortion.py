@@ -122,40 +122,52 @@ def main():
 
     # 6. Process Images
     # Determine base directory for images
-    if args.image_dir:
-        base_dir = args.image_dir
-        print(f"Using override image directory: {base_dir}")
-    else:
-        base_dir = os.path.dirname(os.path.abspath(args.json_path))
+    base_dir = args.image_dir if args.image_dir else os.path.dirname(os.path.abspath(args.json_path))
 
     # Prepare file list and read flags
-    if args.exr:
-        print(f"EXR Mode Enabled: Scanning {base_dir} for .exr files...")
-        read_flags = cv2.IMREAD_UNCHANGED
-        # Find all .exr files in base_dir
-        files_to_process = [f for f in os.listdir(base_dir) if f.lower().endswith('.exr')]
-        files_to_process.sort() # Ensure consistent order
+    files_to_process = []
+    read_flags = cv2.IMREAD_COLOR
+
+    # If --image_dir is provided OR --exr is set, we scan the directory
+    if args.image_dir or args.exr:
+        if args.exr:
+            print(f"EXR Mode Enabled: Scanning {base_dir} for .exr files...")
+            read_flags = cv2.IMREAD_UNCHANGED
+            valid_exts = ('.exr',)
+        else:
+            print(f"Scanning {base_dir} for images (ignoring JSON frames list)...")
+            valid_exts = ('.jpg', '.jpeg', '.png', '.tif', '.tiff', '.bmp')
+
+        # Find all files with valid extensions in base_dir
+        if os.path.exists(base_dir):
+            files_to_process = [f for f in os.listdir(base_dir) if f.lower().endswith(valid_exts)]
+            files_to_process.sort() # Ensure consistent order
+        else:
+            print(f"Error: Image directory {base_dir} does not exist.")
+            sys.exit(1)
+            
         if not files_to_process:
-             print(f"No .exr files found in {base_dir}")
+             print(f"No matching image files found in {base_dir}")
              sys.exit(0)
+             
     else:
+        # Fallback to JSON frames if no image_dir override
         frames = data.get('frames', [])
         if not frames:
             print("No frames found in JSON 'frames' list.")
             sys.exit(0)
         files_to_process = frames
-        read_flags = cv2.IMREAD_COLOR
 
     print(f"Starting processing of {len(files_to_process)} images...")
 
     for i, item in enumerate(files_to_process):
         # Determine image path based on mode
-        if args.exr:
+        if args.image_dir or args.exr:
             # item is just the filename
             rel_path = item
             image_path = os.path.join(base_dir, rel_path)
         else:
-            # item is a frame dict
+            # item is a frame dict from JSON
             rel_path = item['file_path']
             rel_path = rel_path.replace('\\', os.sep).replace('/', os.sep)
             
@@ -164,13 +176,6 @@ def main():
                 rel_path = rel_path[2:]
                 
             image_path = os.path.join(base_dir, rel_path)
-
-            # Fallback: if user specified an image_dir, they might have pointed
-            # directly to the flat folder containing images, ignoring the internal structure.
-            if args.image_dir and not os.path.exists(image_path):
-                flat_path = os.path.join(base_dir, os.path.basename(rel_path))
-                if os.path.exists(flat_path):
-                    image_path = flat_path
         
         if not os.path.exists(image_path):
             print(f"  [Skipping] Image not found: {image_path}")
