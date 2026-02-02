@@ -37,7 +37,7 @@ pip install numpy opencv-python
 The main entry point is `run_autotracker.py`.
 
 ```bash
-python run_autotracker.py <input_videos_dir> <output_dir> --scale <scale_factor> [--skip-houdini] [--hfs <houdini_path>] [--multi-cams] [--acescg] [--lut <lut_file>]
+python run_autotracker.py <input_videos_dir> <output_dir> --scale <scale_factor> [--skip-houdini] [--hfs <houdini_path>] [--multi-cams] [--acescg] [--lut <lut_file>] [--mask <mask_root>]
 ```
 
 *   `input_videos_dir`: Directory containing your source video files (e.g., `.mp4`, `.mov`).
@@ -48,6 +48,20 @@ python run_autotracker.py <input_videos_dir> <output_dir> --scale <scale_factor>
 *   `--multi-cams`: (Optional) If set, COLMAP will treat the input as multiple cameras (one per folder/video) instead of a single shared camera. Useful if videos were shot with different devices or zoom levels.
 *   `--acescg`: (Optional) Converts input video from ACEScg color space to sRGB (using zscale filter).
 *   `--lut`: (Optional) Path to a `.cube` LUT file for custom color space conversion.
+*   `--mask`: (Optional) Path to a directory containing masks.
+*   `--mapper`: (Optional) Choose mapper: `glomap` (standalone, default) or `colmap` (integrated Global Mapper). **Note:** `colmap` option requires COLMAP >= 3.14 which integrates GLOMAP.
+
+### Masking Support
+
+The pipeline supports automatic detection of image masks for reconstruction (e.g., for moving objects or water).
+
+**Masking Rules:**
+1.  **Auto-Detection:** For a video file named `shot01.mp4`, the script automatically looks for a **sibling directory** named `shot01_mask` (located alongside the video file).
+2.  **Custom Root:** If `--mask <path>` is provided, the script will look for `<video_name>_mask` inside that specified path.
+3.  **Filename Format:** 
+    *   Masks must be PNG files.
+    *   The script expects filenames to be `frame_000001.jpg.png` (matching the extracted frames).
+    *   **Auto-Formatting:** If the script finds `frame_000001.png`, it will automatically rename it to `frame_000001.jpg.png` to comply with COLMAP requirements.
 
 ### Example
 
@@ -76,7 +90,7 @@ You can verify the installation and dependencies by running this demo.
 2.  **Tracking (`autotracker.py`)**:
     *   Extracts frames from videos.
     *   Runs COLMAP feature extraction and matching.
-    *   Runs GLOMAP mapper for reconstruction.
+    *   Runs **GLOMAP** (standalone) or **COLMAP Global Mapper** (requires COLMAP >= 3.14) for reconstruction.
     *   Exports the model to TXT format.
 3.  **Conversion**: Converts the sparse model to PLY format.
 4.  **NeRF Prep**: Runs `colmap2nerf.py` to generate `transforms.json`.
