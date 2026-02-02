@@ -49,6 +49,7 @@ python run_autotracker.py <input_videos_dir> <output_dir> --scale <scale_factor>
 *   `--acescg`: (Optional) Converts input video from ACEScg color space to sRGB (using zscale filter).
 *   `--lut`: (Optional) Path to a `.cube` LUT file for custom color space conversion.
 *   `--mask`: (Optional) Path to a directory containing masks.
+*   `--mapper`: (Optional) Choose mapper: `glomap` (standalone, default) or `colmap` (integrated Global Mapper). **Note:** `colmap` option requires COLMAP >= 3.14 which integrates GLOMAP.
 
 ### Masking Support
 
@@ -89,7 +90,7 @@ You can verify the installation and dependencies by running this demo.
 2.  **Tracking (`autotracker.py`)**:
     *   Extracts frames from videos.
     *   Runs COLMAP feature extraction and matching.
-    *   Runs GLOMAP mapper for reconstruction.
+    *   Runs **GLOMAP** (standalone) or **COLMAP Global Mapper** (requires COLMAP >= 3.14) for reconstruction.
     *   Exports the model to TXT format.
 3.  **Conversion**: Converts the sparse model to PLY format.
 4.  **NeRF Prep**: Runs `colmap2nerf.py` to generate `transforms.json`.

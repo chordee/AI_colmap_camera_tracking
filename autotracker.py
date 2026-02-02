@@ -29,7 +29,7 @@ def run_command(cmd, error_msg, quiet=False):
         print(error_msg)
         return False
 
-def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mask_path=None, multi_cams=False, acescg=False, lut_path=None):
+def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mask_path=None, multi_cams=False, acescg=False, lut_path=None, mapper="glomap"):
     # Get base name and extension
     base_name = os.path.splitext(os.path.basename(video_path))[0]
     ext = os.path.splitext(video_path)[1]
@@ -158,8 +158,12 @@ def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mas
         COLMAP, "feature_extractor",
         "--database_path", database_path,
         "--image_path", img_dir,
-        "--SiftExtraction.use_gpu", "1"
     ]
+
+    if mapper == "colmap":
+        cmd_colmap_fe.extend(["--FeatureExtraction.use_gpu", "1"])
+    else:
+        cmd_colmap_fe.extend(["--SiftExtraction.use_gpu", "1"])
     
     if multi_cams:
         cmd_colmap_fe.extend(["--ImageReader.single_camera_per_folder", "1"])
@@ -182,15 +186,27 @@ def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mas
     if not run_command(cmd_colmap_sm, f"        × sequential_matcher failed – skipping \"{base_name}\"."):
         return
 
-    # 4) Sparse reconstruction (GLOMAP)
-    print("        [4/4] GLOMAP mapper ...")
-    cmd_glomap = [
-        GLOMAP, "mapper",
-        "--database_path", database_path,
-        "--image_path", img_dir,
-        "--output_path", sparse_dir
-    ]
-    if not run_command(cmd_glomap, f"        × glomap mapper failed – skipping \"{base_name}\"."):
+    # 4) Sparse reconstruction
+    if mapper == "colmap":
+        print("        [4/4] COLMAP global mapper ...")
+        cmd_mapper = [
+            COLMAP, "global_mapper",
+            "--database_path", database_path,
+            "--image_path", img_dir,
+            "--output_path", sparse_dir
+        ]
+        fail_msg = f"        × colmap global_mapper failed – skipping \"{base_name}\"."
+    else:
+        print("        [4/4] GLOMAP mapper ...")
+        cmd_mapper = [
+            GLOMAP, "mapper",
+            "--database_path", database_path,
+            "--image_path", img_dir,
+            "--output_path", sparse_dir
+        ]
+        fail_msg = f"        × glomap mapper failed – skipping \"{base_name}\"."
+
+    if not run_command(cmd_mapper, fail_msg):
         return
 
     # Export TXT inside the model folder
@@ -226,6 +242,7 @@ def main():
     parser.add_argument("--multi-cams", action="store_true", help="Allow processing multiple videos with different camera settings")
     parser.add_argument("--acescg", action="store_true", help="Convert input ACEScg colorspace to sRGB")
     parser.add_argument("--lut", help="Path to .cube LUT file for color conversion (optional)")
+    parser.add_argument("--mapper", choices=["glomap", "colmap"], default="glomap", help="Choose mapper: glomap (standalone) or colmap (integrated GLOMAP, requires COLMAP >= 3.14). Default: glomap")
     
     # If no arguments provided, print help
     if len(sys.argv) == 1:
@@ -263,7 +280,7 @@ def main():
         sys.exit(0)
 
     print("==============================================================")
-    print(f" Starting GLOMAP pipeline on {total} video(s) ...")
+    print(f" Starting {'GLOMAP' if args.mapper == 'glomap' else 'COLMAP Global'} pipeline on {total} video(s) ...")
     print("==============================================================")
 
     for idx, video_file in enumerate(video_files, 1):
@@ -277,7 +294,8 @@ def main():
             mask_path=mask_path, 
             multi_cams=args.multi_cams,
             acescg=args.acescg,
-            lut_path=lut_path
+            lut_path=lut_path,
+            mapper=args.mapper
         )
 
     print("--------------------------------------------------------------")
