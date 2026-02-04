@@ -71,6 +71,42 @@ The pipeline supports automatic detection of image masks for reconstruction (e.g
 python run_autotracker.py ./videos ./output --scale 0.5 --hfs "C:/Program Files/Side Effects Software/Houdini 20.0.625"
 ```
 
+## Batch Processing with Configuration
+
+You can use `batch_run.py` to process multiple folders within a target directory. To customize parameters for specific folders, you can place a `batch_config.ini` file in the target directory.
+
+### Usage
+```bash
+python batch_run.py <target_directory>
+```
+
+### Configuration Format (batch_config.ini)
+If a folder name matches a section name in the INI file, the specified settings will override the defaults.
+
+```ini
+[shot_01]
+scale = 0.8
+camera_model = OPENCV
+overlap = 16
+skip_houdini = true
+
+[shot_02]
+mapper = colmap
+acescg = true
+```
+
+**Supported INI Keys:**
+*   `scale`: Image scaling factor (float)
+*   `overlap`: Sequential matching overlap (int)
+*   `mapper`: `glomap` or `colmap`
+*   `camera_model`: e.g., `OPENCV`, `PINHOLE`
+*   `mask`: Path to mask directory
+*   `lut`: Path to `.cube` file
+*   `hfs`: Path to Houdini installation
+*   `multi_cams`: `true` or `false`
+*   `acescg`: `true` or `false`
+*   `skip_houdini`: `true` or `false`
+
 ## Quick Start / Demo
 
 A batch script `run_demo_test.bat` is included to easily test the pipeline using the provided demo data.
