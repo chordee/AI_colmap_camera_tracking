@@ -7,7 +7,7 @@ import shutil
 def main():
     parser = argparse.ArgumentParser(description="Batch runner for autotracker and colmap conversion.")
     parser.add_argument("input_path", help="Path to input directory (videos)")
-    parser.add_argument("--output_path", help="Path to output directory")
+    parser.add_argument("output_path", help="Path to output directory")
     parser.add_argument("--scale", type=float, default=0.5, help="Scale argument (default: 0.5)")
     parser.add_argument("--overlap", type=int, default=12, help="Sequential matching overlap (default: 12)")
     parser.add_argument("--skip-houdini", action="store_true", help="Skip Houdini scene generation")
