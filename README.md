@@ -43,6 +43,7 @@ python run_autotracker.py <input_videos_dir> <output_dir> --scale <scale_factor>
 *   `input_videos_dir`: Directory containing your source video files (e.g., `.mp4`, `.mov`).
 *   `output_dir`: Directory where the results (images, sparse models, database) will be saved.
 *   `--scale`: (Optional) Image scaling factor (default: `0.5`).
+*   `--overlap`: (Optional) Sequential matching overlap (default: `12`).
 *   `--skip-houdini`: (Optional) Skip the generation of the Houdini `.hip` scene file.
 *   `--hfs`: (Optional) Path to your Houdini installation directory (e.g., `C:\Program Files\Side Effects Software\Houdini 20.0.xxx`). If not provided, the script assumes `hython` is in your PATH.
 *   `--multi-cams`: (Optional) If set, COLMAP will treat the input as multiple cameras (one per folder/video) instead of a single shared camera. Useful if videos were shot with different devices or zoom levels.
