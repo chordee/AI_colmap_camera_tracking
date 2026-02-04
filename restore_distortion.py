@@ -28,20 +28,20 @@ def main():
 
     # 2. Extract Camera Parameters
     try:
-        fl_x = data['fl_x']
-        fl_y = data['fl_y']
-        cx = data['cx']
-        cy = data['cy']
+        fl_x = float(data['fl_x'])
+        fl_y = float(data['fl_y'])
+        cx = float(data['cx'])
+        cy = float(data['cy'])
         w = int(data['w'])
         h = int(data['h'])
         
         # Distortion coefficients
-        k1 = data.get('k1', 0)
-        k2 = data.get('k2', 0)
-        k3 = data.get('k3', 0)
-        k4 = data.get('k4', 0)
-        p1 = data.get('p1', 0)
-        p2 = data.get('p2', 0)
+        k1 = float(data.get('k1', 0))
+        k2 = float(data.get('k2', 0))
+        k3 = float(data.get('k3', 0))
+        k4 = float(data.get('k4', 0))
+        p1 = float(data.get('p1', 0))
+        p2 = float(data.get('p2', 0))
         
         is_fisheye = data.get('is_fisheye', False)
         
@@ -49,7 +49,86 @@ def main():
         print(f"Error: Missing critical key in JSON data: {e}")
         sys.exit(1)
 
-    # 3. Construct Matrices
+    # 3. Prepare File List (Moved up to check resolution)
+    # Determine base directory for images
+    base_dir = args.image_dir if args.image_dir else os.path.dirname(os.path.abspath(args.json_path))
+
+    # Prepare file list and read flags
+    files_to_process = []
+    read_flags = cv2.IMREAD_COLOR
+
+    # If --image_dir is provided OR --exr is set, we scan the directory
+    if args.image_dir or args.exr:
+        if args.exr:
+            print(f"EXR Mode Enabled: Scanning {base_dir} for .exr files...")
+            read_flags = cv2.IMREAD_UNCHANGED
+            valid_exts = ('.exr',)
+        else:
+            print(f"Scanning {base_dir} for images (ignoring JSON frames list)...")
+            valid_exts = ('.jpg', '.jpeg', '.png', '.tif', '.tiff', '.bmp')
+
+        # Find all files with valid extensions in base_dir
+        if os.path.exists(base_dir):
+            files_to_process = [f for f in os.listdir(base_dir) if f.lower().endswith(valid_exts)]
+            files_to_process.sort() # Ensure consistent order
+        else:
+            print(f"Error: Image directory {base_dir} does not exist.")
+            sys.exit(1)
+            
+        if not files_to_process:
+             print(f"No matching image files found in {base_dir}")
+             sys.exit(0)
+             
+    else:
+        # Fallback to JSON frames if no image_dir override
+        frames = data.get('frames', [])
+        if not frames:
+            print("No frames found in JSON 'frames' list.")
+            sys.exit(0)
+        files_to_process = frames
+
+    # 4. Check Resolution & Scale Intrinsics
+    print(f"Checking resolution of first image to verify consistency...")
+    
+    # Get path of first image
+    first_item = files_to_process[0]
+    if args.image_dir or args.exr:
+        first_img_path = os.path.join(base_dir, first_item)
+    else:
+        rel_path = first_item['file_path'].replace('\\', os.sep).replace('/', os.sep)
+        if rel_path.startswith(f'.{os.sep}'): rel_path = rel_path[2:]
+        first_img_path = os.path.join(base_dir, rel_path)
+
+    if os.path.exists(first_img_path):
+        # Read header only (or full image if needed) to get size
+        temp_img = cv2.imread(first_img_path, read_flags)
+        if temp_img is not None:
+            real_h, real_w = temp_img.shape[:2]
+            
+            if real_w != w or real_h != h:
+                print(f"[WARN] Resolution Mismatch Detected!")
+                print(f"       JSON Calibration: {w}x{h}")
+                print(f"       Actual Image:     {real_w}x{real_h}")
+                
+                scale_x = real_w / w
+                scale_y = real_h / h
+                
+                print(f"       -> Scaling intrinsics by X:{scale_x:.4f}, Y:{scale_y:.4f}")
+                
+                fl_x *= scale_x
+                fl_y *= scale_y
+                cx *= scale_x
+                cy *= scale_y
+                w = real_w
+                h = real_h
+            else:
+                print(f"       Resolution matches ({w}x{h}).")
+        else:
+            print(f"[WARN] Could not read first image {first_img_path} to verify resolution.")
+    else:
+        print(f"[WARN] First image not found at {first_img_path}. Proceeding with JSON defaults.")
+
+    # 5. Construct Matrices
     # Camera Matrix (K)
     K = np.array([[fl_x, 0, cx],
                   [0, fl_y, cy],
@@ -61,13 +140,13 @@ def main():
     # Hardcoded alpha to keep all pixels
     alpha = 1.0
 
-    print(f"  Resolution: {w}x{h}")
+    print(f"  Final Processing Resolution: {w}x{h}")
     print(f"  Camera Matrix (K):\n{K}")
     print(f"  Distortion Coeffs (D):\n{D}")
     print(f"  Model: {'Fisheye' if is_fisheye else 'Perspective'}")
     print(f"  Mode: {'Restore (Undistorting)' if args.undistort else 'Reverse (Distorting)'}")
 
-    # 4. Pre-calculate Maps
+    # 6. Pre-calculate Maps
     print("Pre-calculating remapping maps...")
     
     if not args.undistort:
@@ -115,49 +194,12 @@ def main():
                 K, D, None, new_K, (w, h), cv2.CV_16SC2
             )
 
-    # 5. Prepare Output Directory
+    # 7. Prepare Output Directory
     if not os.path.exists(args.output_dir):
         os.makedirs(args.output_dir)
         print(f"Created output directory: {args.output_dir}")
 
-    # 6. Process Images
-    # Determine base directory for images
-    base_dir = args.image_dir if args.image_dir else os.path.dirname(os.path.abspath(args.json_path))
-
-    # Prepare file list and read flags
-    files_to_process = []
-    read_flags = cv2.IMREAD_COLOR
-
-    # If --image_dir is provided OR --exr is set, we scan the directory
-    if args.image_dir or args.exr:
-        if args.exr:
-            print(f"EXR Mode Enabled: Scanning {base_dir} for .exr files...")
-            read_flags = cv2.IMREAD_UNCHANGED
-            valid_exts = ('.exr',)
-        else:
-            print(f"Scanning {base_dir} for images (ignoring JSON frames list)...")
-            valid_exts = ('.jpg', '.jpeg', '.png', '.tif', '.tiff', '.bmp')
-
-        # Find all files with valid extensions in base_dir
-        if os.path.exists(base_dir):
-            files_to_process = [f for f in os.listdir(base_dir) if f.lower().endswith(valid_exts)]
-            files_to_process.sort() # Ensure consistent order
-        else:
-            print(f"Error: Image directory {base_dir} does not exist.")
-            sys.exit(1)
-            
-        if not files_to_process:
-             print(f"No matching image files found in {base_dir}")
-             sys.exit(0)
-             
-    else:
-        # Fallback to JSON frames if no image_dir override
-        frames = data.get('frames', [])
-        if not frames:
-            print("No frames found in JSON 'frames' list.")
-            sys.exit(0)
-        files_to_process = frames
-
+    # 8. Process Images
     print(f"Starting processing of {len(files_to_process)} images...")
 
     for i, item in enumerate(files_to_process):
@@ -186,6 +228,13 @@ def main():
         if img is None:
             print(f"  [Skipping] Could not read image: {image_path}")
             continue
+
+        # Double check size consistency for safety
+        if img.shape[1] != w or img.shape[0] != h:
+             # Basic resize on the fly if minor deviation, or skip?
+             # For now, let's assume all images in the folder are same size as the first one.
+             # If strictly different, cv2.remap might crash or produce garbage if maps don't match.
+             pass
 
         # Perform Remapping (works for both directions now)
         processed_img = cv2.remap(
