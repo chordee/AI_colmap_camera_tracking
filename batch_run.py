@@ -36,15 +36,16 @@ def main():
         
         if os.path.isdir(full_item_path):
             folder_name = item
-            output_name = f"{folder_name}-output"
+            # Create output path relative to the target directory, not the current working directory
+            output_path = os.path.join(target_path, f"{folder_name}-output")
             
             print(f"--------------------------------------------------")
             print(f"Processing: {folder_name}")
             print(f"Input: {full_item_path}")
-            print(f"Output: {output_name}")
+            print(f"Output: {output_path}")
             
             # Base command
-            cmd = [sys.executable, "run_autotracker.py", full_item_path, output_name]
+            cmd = [sys.executable, "run_autotracker.py", full_item_path, output_path]
             
             # Check if this folder has specific config
             if folder_name in config:
