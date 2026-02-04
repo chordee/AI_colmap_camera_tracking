@@ -29,7 +29,7 @@ def run_command(cmd, error_msg, quiet=False):
         print(error_msg)
         return False
 
-def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mask_path=None, multi_cams=False, acescg=False, lut_path=None, mapper="glomap"):
+def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mask_path=None, multi_cams=False, acescg=False, lut_path=None, mapper="glomap", camera_model=None):
     # Get base name and extension
     base_name = os.path.splitext(os.path.basename(video_path))[0]
     ext = os.path.splitext(video_path)[1]
@@ -160,6 +160,9 @@ def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mas
         "--image_path", img_dir,
     ]
 
+    if camera_model:
+        cmd_colmap_fe.extend(["--ImageReader.camera_model", camera_model])
+
     if mapper == "colmap":
         cmd_colmap_fe.extend(["--FeatureExtraction.use_gpu", "1"])
     else:
@@ -243,6 +246,7 @@ def main():
     parser.add_argument("--acescg", action="store_true", help="Convert input ACEScg colorspace to sRGB")
     parser.add_argument("--lut", help="Path to .cube LUT file for color conversion (optional)")
     parser.add_argument("--mapper", choices=["glomap", "colmap"], default="glomap", help="Choose mapper: glomap (standalone) or colmap (integrated GLOMAP, requires COLMAP >= 3.14). Default: glomap")
+    parser.add_argument("--camera_model", help="Specify COLMAP camera model (e.g., OPENCV, PINHOLE, SIMPLE_RADIAL). Default: Auto (COLMAP decides)")
     
     # If no arguments provided, print help
     if len(sys.argv) == 1:
@@ -295,7 +299,8 @@ def main():
             multi_cams=args.multi_cams,
             acescg=args.acescg,
             lut_path=lut_path,
-            mapper=args.mapper
+            mapper=args.mapper,
+            camera_model=args.camera_model
         )
 
     print("--------------------------------------------------------------")

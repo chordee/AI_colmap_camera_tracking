@@ -50,6 +50,7 @@ python run_autotracker.py <input_videos_dir> <output_dir> --scale <scale_factor>
 *   `--lut`: (Optional) Path to a `.cube` LUT file for custom color space conversion.
 *   `--mask`: (Optional) Path to a directory containing masks.
 *   `--mapper`: (Optional) Choose mapper: `glomap` (standalone, default) or `colmap` (integrated Global Mapper). **Note:** `colmap` option requires COLMAP >= 3.14 which integrates GLOMAP.
+*   `--camera_model`: (Optional) Specify COLMAP camera model (e.g., `OPENCV`, `PINHOLE`, `SIMPLE_RADIAL`). Default is Auto (COLMAP decides).
 
 ### Masking Support
 

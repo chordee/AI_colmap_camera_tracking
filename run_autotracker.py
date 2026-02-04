@@ -16,6 +16,7 @@ def main():
     parser.add_argument("--lut", help="Path to .cube LUT file for color conversion (optional)")
     parser.add_argument("--mask", help="Path to mask directory root (optional)")
     parser.add_argument("--mapper", choices=["glomap", "colmap"], default="glomap", help="Choose mapper: glomap (standalone) or colmap (integrated Global Mapper). Default: glomap")
+    parser.add_argument("--camera_model", help="Specify COLMAP camera model (e.g., OPENCV, PINHOLE, SIMPLE_RADIAL). Default: Auto (COLMAP decides)")
 
     args = parser.parse_args()
 
@@ -48,6 +49,8 @@ def main():
         cmd1.extend(["--mask", args.mask])
     if args.mapper:
         cmd1.extend(["--mapper", args.mapper])
+    if args.camera_model:
+        cmd1.extend(["--camera_model", args.camera_model])
         
     print(f"Running: {' '.join(cmd1)}")
     try:
