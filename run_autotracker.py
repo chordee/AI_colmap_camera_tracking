@@ -19,8 +19,8 @@ def main():
     parser.add_argument("--mapper", choices=["glomap", "colmap"], default="glomap", help="Choose mapper: glomap (standalone) or colmap (integrated Global Mapper). Default: glomap")
     parser.add_argument("--camera_model", help="Specify COLMAP camera model (e.g., OPENCV, PINHOLE, SIMPLE_RADIAL). Default: Auto (COLMAP decides)")
     parser.add_argument("--loop", action="store_true", help="Enable COLMAP loop detection in sequential matching")
-    parser.add_argument("--loop-period", type=int, default=5, help="COLMAP loop detection period (default: 5)")
-    parser.add_argument("--loop-num-images", type=int, default=50, help="COLMAP loop detection number of images (default: 50)")
+    parser.add_argument("--loop_period", type=int, default=5, help="COLMAP loop detection period (default: 5)")
+    parser.add_argument("--loop_num_images", type=int, default=50, help="COLMAP loop detection number of images (default: 50)")
 
     args = parser.parse_args()
 
@@ -57,8 +57,8 @@ def main():
         cmd1.extend(["--camera_model", args.camera_model])
     if args.loop:
         cmd1.append("--loop")
-        cmd1.extend(["--loop-period", str(args.loop_period)])
-        cmd1.extend(["--loop-num-images", str(args.loop_num_images)])
+        cmd1.extend(["--loop_period", str(args.loop_period)])
+        cmd1.extend(["--loop_num_images", str(args.loop_num_images)])
         
     print(f"Running: {' '.join(cmd1)}")
     try:

@@ -19,6 +19,9 @@ def main():
     parser.add_argument("--multi-cams", action="store_true", help="Default multi-cams setting")
     parser.add_argument("--acescg", action="store_true", help="Default acescg setting")
     parser.add_argument("--skip-houdini", action="store_true", help="Default skip-houdini setting")
+    parser.add_argument("--loop", action="store_true", help="Default loop detection setting")
+    parser.add_argument("--loop_period", type=int, help="Default loop detection period")
+    parser.add_argument("--loop_num_images", type=int, help="Default loop detection number of images")
     
     args = parser.parse_args()
 
@@ -104,6 +107,13 @@ def main():
                 
             if get_setting('skip_houdini', args.skip_houdini, is_bool=True):
                 cmd.append('--skip-houdini')
+
+            if get_setting('loop', args.loop, is_bool=True):
+                cmd.append('--loop')
+                s_loop_p = get_setting('loop_period', args.loop_period)
+                if s_loop_p: cmd.extend(['--loop_period', str(s_loop_p)])
+                s_loop_n = get_setting('loop_num_images', args.loop_num_images)
+                if s_loop_n: cmd.extend(['--loop_num_images', str(s_loop_n)])
 
             print(f"Command: {' '.join(cmd)}")
             try:

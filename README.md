@@ -37,7 +37,7 @@ pip install numpy opencv-python
 The main entry point is `run_autotracker.py`.
 
 ```bash
-python run_autotracker.py <input_videos_dir> <output_dir> --scale <scale_factor> [--skip-houdini] [--hfs <houdini_path>] [--multi-cams] [--acescg] [--lut <lut_file>] [--mask <mask_root>]
+python run_autotracker.py <input_videos_dir> <output_dir> --scale <scale_factor> [--skip-houdini] [--hfs <houdini_path>] [--multi-cams] [--acescg] [--lut <lut_file>] [--mask <mask_root>] [--loop] [--loop_period <period>] [--loop_num_images <count>]
 ```
 
 *   `input_videos_dir`: Directory containing your source video files (e.g., `.mp4`, `.mov`).
@@ -52,6 +52,9 @@ python run_autotracker.py <input_videos_dir> <output_dir> --scale <scale_factor>
 *   `--mask`: (Optional) Path to a directory containing masks.
 *   `--mapper`: (Optional) Choose mapper: `glomap` (standalone, default) or `colmap` (integrated Global Mapper). **Note:** `colmap` option requires COLMAP >= 3.14 which integrates GLOMAP.
 *   `--camera_model`: (Optional) Specify COLMAP camera model (e.g., `OPENCV`, `PINHOLE`, `SIMPLE_RADIAL`). Default is Auto (COLMAP decides).
+*   `--loop`: (Optional) Enable COLMAP loop detection in sequential matching.
+*   `--loop_period`: (Optional) COLMAP loop detection period (default: `5`).
+*   `--loop_num_images`: (Optional) COLMAP loop detection number of images (default: `50`).
 
 ### Masking Support
 
@@ -106,6 +109,9 @@ acescg = true
 *   `multi_cams`: `true` or `false`
 *   `acescg`: `true` or `false`
 *   `skip_houdini`: `true` or `false`
+*   `loop`: `true` or `false`
+*   `loop_period`: Loop detection period (int)
+*   `loop_num_images`: Number of images for loop detection (int)
 
 ## Quick Start / Demo
 
