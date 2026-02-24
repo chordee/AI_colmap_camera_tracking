@@ -22,9 +22,9 @@ def main():
     parser.add_argument("--loop_period", type=int, default=5, help="COLMAP loop detection period (default: 5)")
     parser.add_argument("--loop_num_images", type=int, default=50, help="COLMAP loop detection number of images (default: 50)")
     parser.add_argument("--vocab_tree_path", default="vocab_tree_faiss_flickr100K_words32K.bin", help="Path to vocabulary tree for loop detection")
-    parser.add_argument("--extra_fe", help="Extra arguments for feature extraction (JSON string)")
-    parser.add_argument("--extra_sm", help="Extra arguments for sequential matching (JSON string)")
-    parser.add_argument("--extra_ma", help="Extra arguments for mapping (JSON string)")
+    parser.add_argument("--extra_fe", help="Extra arguments for feature extraction (JSON string or path to .json file)")
+    parser.add_argument("--extra_sm", help="Extra arguments for sequential matching (JSON string or path to .json file)")
+    parser.add_argument("--extra_ma", help="Extra arguments for mapping (JSON string or path to .json file)")
 
     args = parser.parse_args()
 

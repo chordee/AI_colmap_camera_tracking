@@ -56,6 +56,9 @@ python run_autotracker.py <input_videos_dir> <output_dir> --scale <scale_factor>
 *   `--loop_period`: (Optional) COLMAP loop detection period (default: `5`).
 *   `--loop_num_images`: (Optional) COLMAP loop detection number of images (default: `50`).
 *   `--vocab_tree_path`: (Optional) Path to vocabulary tree for loop detection (default: `vocab_tree_faiss_flickr100K_words32K.bin`).
+*   `--extra_fe`: (Optional) Extra arguments for feature extraction stage. Accepts a JSON string or a path to a `.json` file.
+*   `--extra_sm`: (Optional) Extra arguments for sequential matching stage. Accepts a JSON string or a path to a `.json` file.
+*   `--extra_ma`: (Optional) Extra arguments for mapping stage. Accepts a JSON string or a path to a `.json` file.
 
 ### Masking Support
 

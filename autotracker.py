@@ -276,9 +276,9 @@ def main():
     parser.add_argument("--loop_period", type=int, default=5, help="COLMAP loop detection period (default: 5)")
     parser.add_argument("--loop_num_images", type=int, default=50, help="COLMAP loop detection number of images (default: 50)")
     parser.add_argument("--vocab_tree_path", default="vocab_tree_faiss_flickr100K_words32K.bin", help="Path to vocabulary tree for loop detection (default: vocab_tree_faiss_flickr100K_words32K.bin)")
-    parser.add_argument("--extra_fe", help="Extra arguments for feature extraction (JSON string)")
-    parser.add_argument("--extra_sm", help="Extra arguments for sequential matching (JSON string)")
-    parser.add_argument("--extra_ma", help="Extra arguments for mapping (JSON string)")
+    parser.add_argument("--extra_fe", help="Extra arguments for feature extraction (JSON string or path to .json file)")
+    parser.add_argument("--extra_sm", help="Extra arguments for sequential matching (JSON string or path to .json file)")
+    parser.add_argument("--extra_ma", help="Extra arguments for mapping (JSON string or path to .json file)")
     
     # If no arguments provided, print help
     if len(sys.argv) == 1:
@@ -315,13 +315,29 @@ def main():
         input("Press Enter to exit...")
         sys.exit(0)
 
-    # Parse extra args if provided
-    def parse_extra(extra_str):
-        if not extra_str: return None
+    # Parse extra args if provided (supports JSON string or file path)
+    def parse_extra(extra_input):
+        if not extra_input: return None
+        
+        # 1. Try treating it as a file path
+        if os.path.isfile(extra_input):
+            try:
+                with open(extra_input, 'r') as f:
+                    print(f"        • Loading extra arguments from: {extra_input}")
+                    return json.load(f)
+            except Exception as e:
+                print(f"        [WARN] Failed to read JSON file {extra_input}: {e}")
+                return None
+
+        # 2. Try parsing as a raw JSON string
         try:
-            return json.loads(extra_str)
+            return json.loads(extra_input)
         except json.JSONDecodeError:
-            print(f"[WARN] Failed to parse extra arguments JSON: {extra_str}")
+            # If it's not JSON and not a file, print a helpful warning
+            if extra_input.startswith('{') or extra_input.startswith('['):
+                print(f"        [WARN] Failed to parse extra arguments JSON string: {extra_input}")
+            else:
+                print(f"        [WARN] Extra argument is neither a valid file path nor a valid JSON string: {extra_input}")
             return None
 
     extra_fe = parse_extra(args.extra_fe)
