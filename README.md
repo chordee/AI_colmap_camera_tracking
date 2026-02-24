@@ -55,6 +55,7 @@ python run_autotracker.py <input_videos_dir> <output_dir> --scale <scale_factor>
 *   `--loop`: (Optional) Enable COLMAP loop detection in sequential matching.
 *   `--loop_period`: (Optional) COLMAP loop detection period (default: `5`).
 *   `--loop_num_images`: (Optional) COLMAP loop detection number of images (default: `50`).
+*   `--vocab_tree_path`: (Optional) Path to vocabulary tree for loop detection (default: `vocab_tree_faiss_flickr100K_words32K.bin`).
 
 ### Masking Support
 
@@ -112,6 +113,7 @@ acescg = true
 *   `loop`: `true` or `false`
 *   `loop_period`: Loop detection period (int)
 *   `loop_num_images`: Number of images for loop detection (int)
+*   `vocab_tree_path`: Path to vocabulary tree (string)
 
 ## Quick Start / Demo
 

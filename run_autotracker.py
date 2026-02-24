@@ -21,6 +21,7 @@ def main():
     parser.add_argument("--loop", action="store_true", help="Enable COLMAP loop detection in sequential matching")
     parser.add_argument("--loop_period", type=int, default=5, help="COLMAP loop detection period (default: 5)")
     parser.add_argument("--loop_num_images", type=int, default=50, help="COLMAP loop detection number of images (default: 50)")
+    parser.add_argument("--vocab_tree_path", default="vocab_tree_faiss_flickr100K_words32K.bin", help="Path to vocabulary tree for loop detection")
 
     args = parser.parse_args()
 
@@ -59,6 +60,8 @@ def main():
         cmd1.append("--loop")
         cmd1.extend(["--loop_period", str(args.loop_period)])
         cmd1.extend(["--loop_num_images", str(args.loop_num_images)])
+        if args.vocab_tree_path:
+            cmd1.extend(["--vocab_tree_path", args.vocab_tree_path])
         
     print(f"Running: {' '.join(cmd1)}")
     try:

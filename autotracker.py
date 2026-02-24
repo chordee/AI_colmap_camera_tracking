@@ -29,7 +29,7 @@ def run_command(cmd, error_msg, quiet=False):
         print(error_msg)
         return False
 
-def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mask_path=None, multi_cams=False, acescg=False, lut_path=None, mapper="glomap", camera_model=None, loop=False, loop_period=5, loop_num_images=50):
+def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mask_path=None, multi_cams=False, acescg=False, lut_path=None, mapper="glomap", camera_model=None, loop=False, loop_period=5, loop_num_images=50, vocab_tree_path=None):
     # Get base name and extension
     base_name = os.path.splitext(os.path.basename(video_path))[0]
     ext = os.path.splitext(video_path)[1]
@@ -192,6 +192,8 @@ def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mas
             "--SequentialMatching.loop_detection_period", str(loop_period),
             "--SequentialMatching.loop_detection_num_images", str(loop_num_images)
         ])
+        if vocab_tree_path:
+            cmd_colmap_sm.extend(["--SequentialMatching.vocab_tree_path", vocab_tree_path])
     if not run_command(cmd_colmap_sm, f"        × sequential_matcher failed – skipping \"{base_name}\"."):
         return
 
@@ -256,6 +258,7 @@ def main():
     parser.add_argument("--loop", action="store_true", help="Enable COLMAP loop detection in sequential matching")
     parser.add_argument("--loop_period", type=int, default=5, help="COLMAP loop detection period (default: 5)")
     parser.add_argument("--loop_num_images", type=int, default=50, help="COLMAP loop detection number of images (default: 50)")
+    parser.add_argument("--vocab_tree_path", default="vocab_tree_faiss_flickr100K_words32K.bin", help="Path to vocabulary tree for loop detection (default: vocab_tree_faiss_flickr100K_words32K.bin)")
     
     # If no arguments provided, print help
     if len(sys.argv) == 1:
@@ -312,7 +315,8 @@ def main():
             camera_model=args.camera_model,
             loop=args.loop,
             loop_period=args.loop_period,
-            loop_num_images=args.loop_num_images
+            loop_num_images=args.loop_num_images,
+            vocab_tree_path=args.vocab_tree_path
         )
 
     print("--------------------------------------------------------------")

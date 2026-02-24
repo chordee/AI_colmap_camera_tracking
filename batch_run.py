@@ -22,6 +22,7 @@ def main():
     parser.add_argument("--loop", action="store_true", help="Default loop detection setting")
     parser.add_argument("--loop_period", type=int, help="Default loop detection period")
     parser.add_argument("--loop_num_images", type=int, help="Default loop detection number of images")
+    parser.add_argument("--vocab_tree_path", help="Default vocabulary tree path")
     
     args = parser.parse_args()
 
@@ -118,6 +119,8 @@ def main():
                 if s_loop_p: cmd.extend(['--loop_period', str(s_loop_p)])
                 s_loop_n = get_setting('loop_num_images', args.loop_num_images)
                 if s_loop_n: cmd.extend(['--loop_num_images', str(s_loop_n)])
+                s_vocab = get_setting('vocab_tree_path', args.vocab_tree_path)
+                if s_vocab: cmd.extend(['--vocab_tree_path', s_vocab])
 
             print(f"Command: {' '.join(cmd)}")
             try:
