@@ -59,8 +59,12 @@ def main():
             print(f"--------------------------------------------------")
             print(f"Processing: {folder_name}")
             
+            # Locate run_autotracker.py relative to this script
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            run_autotracker_script = os.path.join(script_dir, "run_autotracker.py")
+
             # Base command
-            cmd = [sys.executable, "run_autotracker.py", full_item_path, output_path]
+            cmd = [sys.executable, run_autotracker_script, full_item_path, output_path]
             
             # Determine effective settings
             # Priority: Folder Section > Global Section > CLI Args

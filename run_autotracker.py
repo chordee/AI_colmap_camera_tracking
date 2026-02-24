@@ -145,7 +145,16 @@ def main():
 
         # Determine hython executable
         if args.hfs:
-            hython_exec = os.path.join(args.hfs, "bin", "hython")
+            # Clean up the path (remove quotes if any)
+            hfs_path = args.hfs.strip().strip('"').strip("'")
+            
+            # Smart check for bin folder
+            if os.path.basename(hfs_path).lower() == "bin":
+                hython_dir = hfs_path
+            else:
+                hython_dir = os.path.join(hfs_path, "bin")
+            
+            hython_exec = os.path.join(hython_dir, "hython")
             if sys.platform == "win32":
                 hython_exec += ".exe"
         else:
@@ -160,14 +169,37 @@ def main():
             hip_path = os.path.join(folder_path, f"{folder}.hip").replace("\\", "/")
 
             if os.path.exists(ply_path) and os.path.exists(json_path):
-                cmd_houdini = [hython_exec, houdini_script, json_path, ply_path, hip_path]
-                print(f"Running: {' '.join(cmd_houdini)}")
+                # Ensure paths are absolutely correct for the OS
+                h_exec = os.path.abspath(hython_exec)
+                h_script = os.path.abspath(houdini_script)
+                h_json = os.path.abspath(json_path)
+                h_ply = os.path.abspath(ply_path)
+                h_hip = os.path.abspath(hip_path)
+
+                cmd_houdini = [h_exec, h_script, h_json, h_ply, h_hip]
+                print(f"Running Houdini: {' '.join(cmd_houdini)}")
+                
+                # Check if executable exists and is not a directory
+                if not os.path.isfile(h_exec):
+                    print(f"[ERROR] Hython executable not found or is a directory: {h_exec}")
+                    continue
+
                 try:
-                    subprocess.run(cmd_houdini, check=True)
-                except subprocess.CalledProcessError:
-                    print(f"[ERROR] build_houdini_scene.py failed for {folder}.")
-                except FileNotFoundError:
-                    print(f"[ERROR] {hython_exec} executable not found. Ensure Houdini is in PATH or --hfs is correct.")
+                    # Clean environment to avoid Houdini picking up this script's Python venv
+                    clean_env = os.environ.copy()
+                    clean_env.pop("PYTHONPATH", None)
+                    clean_env.pop("PYTHONHOME", None)
+                    
+                    # On Windows, sometimes shell=True helps with certain environment/path issues for Houdini
+                    # but list-based is generally preferred. We'll stick to list but ensure absolute paths.
+                    subprocess.run(cmd_houdini, check=True, env=clean_env)
+                except subprocess.CalledProcessError as e:
+                    print(f"[ERROR] build_houdini_scene.py failed for {folder} with exit code {e.returncode}.")
+                except PermissionError:
+                    print(f"[ERROR] Access denied when trying to run: {h_exec}")
+                    print(f"        This might be due to file permissions, antivirus blocking, or {h_exec} being a directory.")
+                except Exception as e:
+                    print(f"[ERROR] An unexpected error occurred while running Houdini: {e}")
     else:
         print("Skipping Houdini scene generation as per argument.")
 
