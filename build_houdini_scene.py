@@ -35,13 +35,10 @@ def create_animated_camera(json_path, global_scale=1, cam_name="Nerfstudio_Anima
         print("No frames found in JSON.")
         return
 
-    # Read resolution and focal length
-    img_w = float(data.get("w", 1920))
-    img_h = float(data.get("h", 1080))
-    fl_x = float(data.get("fl_x", 1000)) # Focal Length in Pixels
-
-    # Convert to Houdini Focal Length (mm)
-    focal_mm = (fl_x / img_w) * aperture_width
+    # Read resolution and default focal length
+    global_w = float(data.get("w", 1920))
+    global_h = float(data.get("h", 1080))
+    global_fl_x = float(data.get("fl_x", 1000))
 
     # 3. Create Houdini nodes
     obj = hou.node("/obj")
@@ -57,11 +54,10 @@ def create_animated_camera(json_path, global_scale=1, cam_name="Nerfstudio_Anima
 
     print(f"Creating animation for {len(frames)} frames...")
 
-    # Set static camera parameters
-    cam.parm("resx").set(img_w)
-    cam.parm("resy").set(img_h)
+    # Set static camera parameters (Resolution is usually static in Houdini)
+    cam.parm("resx").set(global_w)
+    cam.parm("resy").set(global_h)
     cam.parm("aperture").set(aperture_width)
-    cam.parm("focal").set(focal_mm)
     cam.parm("iconscale").set(0.5)
 
     # Set background image for viewport
@@ -80,7 +76,6 @@ def create_animated_camera(json_path, global_scale=1, cam_name="Nerfstudio_Anima
             # Read matrix
             raw_mtx = frame_data["transform_matrix"]
             
-            # [Correction]: Variable name typo fixed, now using raw_mtx
             if isinstance(raw_mtx[0], list):
                 flat_mtx = [item for sublist in raw_mtx for item in sublist]
             else:
@@ -99,6 +94,12 @@ def create_animated_camera(json_path, global_scale=1, cam_name="Nerfstudio_Anima
             tra = final_mtx.extractTranslates()
             rot = final_mtx.extractRotates()
 
+            # --- Handle Focal Length (Animation Support) ---
+            # Priority: Per-frame fl_x > global fl_x
+            curr_fl_x = float(frame_data.get("fl_x", global_fl_x))
+            curr_w = float(frame_data.get("w", global_w))
+            focal_mm = (curr_fl_x / curr_w) * aperture_width
+
             # Prepare values (apply scaling)
             tx = tra[0] * global_scale
             ty = tra[1] * global_scale
@@ -106,8 +107,8 @@ def create_animated_camera(json_path, global_scale=1, cam_name="Nerfstudio_Anima
             rx, ry, rz = rot
 
             # Set Keyframes
-            target_parms = ["tx", "ty", "tz", "rx", "ry", "rz"]
-            values = [tx, ty, tz, rx, ry, rz]
+            target_parms = ["tx", "ty", "tz", "rx", "ry", "rz", "focal"]
+            values = [tx, ty, tz, rx, ry, rz, focal_mm]
 
             for p_name, val in zip(target_parms, values):
                 k = hou.Keyframe()

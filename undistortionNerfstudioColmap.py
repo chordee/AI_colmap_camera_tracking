@@ -28,107 +28,112 @@ def undistort_process(json_path, output_dir, crop_to_valid):
     with open(json_path, 'r') as f:
         data = json.load(f)
 
-    # 1. 讀取相機參數
-    w = int(data.get("w", 1920))
-    h = int(data.get("h", 1080))
-    fl_x = float(data.get("fl_x", 1000))
-    fl_y = float(data.get("fl_y", fl_x)) # 如果沒有 fl_y，通常預設等於 fl_x
-    cx = float(data.get("cx", w / 2))
-    cy = float(data.get("cy", h / 2))
+    def get_cam_params(obj, d=None):
+        """Helper to get intrinsic/distortion params from an object or fallback to defaults."""
+        d = d if d else {}
+        w = int(obj.get("w", d.get("w", 1920)))
+        h = int(obj.get("h", d.get("h", 1080)))
+        fl_x = float(obj.get("fl_x", d.get("fl_x", 1000)))
+        fl_y = float(obj.get("fl_y", d.get("fl_y", fl_x)))
+        cx = float(obj.get("cx", d.get("cx", w / 2)))
+        cy = float(obj.get("cy", d.get("cy", h / 2)))
+        k1 = float(obj.get("k1", d.get("k1", 0.0)))
+        k2 = float(obj.get("k2", d.get("k2", 0.0)))
+        k3 = float(obj.get("k3", d.get("k3", 0.0)))
+        k4 = float(obj.get("k4", d.get("k4", 0.0)))
+        p1 = float(obj.get("p1", d.get("p1", 0.0)))
+        p2 = float(obj.get("p2", d.get("p2", 0.0)))
+        
+        K = np.array([[fl_x, 0, cx], [0, fl_y, cy], [0, 0, 1]], dtype=np.float32)
+        D = np.array([k1, k2, p1, p2, k3, k4, 0.0, 0.0], dtype=np.float32)
+        return w, h, K, D
 
-    # 2. 讀取畸變參數 (Distortion Coefficients)
-    k1 = float(data.get("k1", 0.0))
-    k2 = float(data.get("k2", 0.0))
-    k3 = float(data.get("k3", 0.0))
-    k4 = float(data.get("k4", 0.0))
-    p1 = float(data.get("p1", 0.0))
-    p2 = float(data.get("p2", 0.0))
-
-    # 建構相機矩陣 (Camera Matrix)
-    K = np.array([
-        [fl_x, 0,    cx],
-        [0,    fl_y, cy],
-        [0,    0,    1 ]
-    ])
-
-    # 建構畸變向量 (Distortion Vector)
-    D = np.array([k1, k2, p1, p2, k3, k4, 0.0, 0.0]) # OpenCV 順序
-
-    print(f"Camera Matrix:\n{K}")
-    print(f"Distortion Coeffs: {D}")
-
-    # 3. 計算新的相機矩陣 (Optimal New Camera Matrix)
-    # 這一步很重要，因為拉直圖片後，原本的焦距和光心可能會改變
-    # alpha=0: 裁切掉所有黑邊 (視角變小)
-    # alpha=1: 保留所有像素 (會有黑邊)
-    alpha = 0 if crop_to_valid else 1
-    new_K, roi = cv2.getOptimalNewCameraMatrix(K, D, (w, h), alpha, (w, h))
-    
-    # 用於裁切的 ROI (x, y, w, h)
-    x, y, w_roi, h_roi = roi
-
-    # 4. 準備新的 JSON 資料
-    new_data = data.copy()
-    
-    # 更新 JSON 裡的內參為「去畸變後」的新數值
-    new_data["fl_x"] = new_K[0, 0]
-    new_data["fl_y"] = new_K[1, 1]
-    new_data["cx"] = new_K[0, 2]
-    new_data["cy"] = new_K[1, 2]
-    new_data["w"] = w_roi if crop_to_valid else w
-    new_data["h"] = h_roi if crop_to_valid else h
-    
-    # 將畸變參數歸零 (因為圖片已經直了)
-    for key in ["k1", "k2", "k3", "k4", "p1", "p2"]:
-        new_data[key] = 0.0
+    # Get global defaults
+    global_w, global_h, global_K, global_D = get_cam_params(data)
 
     new_frames = []
     frames = data.get("frames", [])
     
     print(f"Processing {len(frames)} images...")
 
-    # 5. 開始批量處理圖片
+    # 準備新的 JSON 資料基礎
+    new_data = data.copy()
+    # 預設先把根節點的畸變參數歸零 (如果之後發現是全局共用，會在下面更新)
+    for key in ["k1", "k2", "k3", "k4", "p1", "p2"]:
+        if key in new_data: new_data[key] = 0.0
+
     json_dir = Path(json_path).parent
 
     for idx, frame in enumerate(frames):
-        # 處理路徑
+        # 1. 決定這一幀使用的相機參數
+        # 如果 frame 裡有 fl_x，我們就認為它有獨立參數
+        if "fl_x" in frame:
+            w, h, K, D = get_cam_params(frame, d=data)
+            is_per_frame = True
+        else:
+            w, h, K, D = global_w, global_h, global_K, global_D
+            is_per_frame = False
+
+        # 2. 計算這一幀的最佳相機矩陣
+        alpha = 0 if crop_to_valid else 1
+        new_K, roi = cv2.getOptimalNewCameraMatrix(K, D, (w, h), alpha, (w, h))
+        x, y, w_roi, h_roi = roi
+
+        # 3. 處理路徑
         rel_path = frame["file_path"]
-        # 嘗試組合絕對路徑
         img_path = json_dir / rel_path
         
         if not img_path.exists():
             print(f"Warning: Image not found: {img_path}")
             continue
 
-        # 讀取圖片
+        # 4. 讀取並去畸變
         img = cv2.imread(str(img_path))
         if img is None:
             continue
 
-        # 【核心步驟】去畸變
         dst = cv2.undistort(img, K, D, None, new_K)
-
-        # 裁切 (如果 CROP_TO_VALID = True)
         if crop_to_valid:
             dst = dst[y:y+h_roi, x:x+w_roi]
 
-        # 存檔
+        # 5. 存檔
         img_name = Path(rel_path).name
         save_path = images_out_dir / img_name
         cv2.imwrite(str(save_path), dst)
 
-        # 更新 frame 的 file_path 指向新圖片
+        # 6. 更新這一幀的資料
         new_frame = frame.copy()
-        # 這裡寫入相對路徑，方便 JSON 移動
         new_frame["file_path"] = f"images_undistorted/{img_name}"
+        
+        # 更新內參
+        new_frame["fl_x"] = float(new_K[0, 0])
+        new_frame["fl_y"] = float(new_K[1, 1])
+        new_frame["cx"] = float(new_K[0, 2])
+        new_frame["cy"] = float(new_K[1, 2])
+        new_frame["w"] = float(w_roi if crop_to_valid else w)
+        new_frame["h"] = float(h_roi if crop_to_valid else h)
+        
+        # 畸變參數歸零
+        for key in ["k1", "k2", "k3", "k4", "p1", "p2"]:
+            if key in new_frame: new_frame[key] = 0.0
+        
+        # 如果是全局共用的，也順便更新根節點 (最後一幀會決定根節點數值)
+        if not is_per_frame:
+            new_data["fl_x"] = new_frame["fl_x"]
+            new_data["fl_y"] = new_frame["fl_y"]
+            new_data["cx"] = new_frame["cx"]
+            new_data["cy"] = new_frame["cy"]
+            new_data["w"] = new_frame["w"]
+            new_data["h"] = new_frame["h"]
+
         new_frames.append(new_frame)
 
-        if idx % 20 == 0:
-            print(f"Processed {idx}/{len(frames)}...")
+        if (idx + 1) % 50 == 0 or (idx + 1) == len(frames):
+            print(f"Processed {idx + 1}/{len(frames)}...")
 
     new_data["frames"] = new_frames
 
-    # 6. 儲存新的 JSON
+    # 7. 儲存新的 JSON
     new_json_path = output_path / "transforms_undistorted.json"
     with open(new_json_path, 'w') as f:
         json.dump(new_data, f, indent=4)
