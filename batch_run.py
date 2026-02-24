@@ -3,6 +3,7 @@ import subprocess
 import sys
 import argparse
 import configparser
+import json
 
 def main():
     parser = argparse.ArgumentParser(description="Batch run autotracker on subdirectories of a target path.")
@@ -121,6 +122,29 @@ def main():
                 if s_loop_n: cmd.extend(['--loop_num_images', str(s_loop_n)])
                 s_vocab = get_setting('vocab_tree_path', args.vocab_tree_path)
                 if s_vocab: cmd.extend(['--vocab_tree_path', s_vocab])
+
+            # Handle dynamic extra arguments (fe.*, sm.*, ma.*)
+            def collect_prefixed_settings(prefix):
+                settings = {}
+                # 1. Start with Global settings
+                for key, val in config.defaults().items():
+                    if key.startswith(prefix):
+                        settings[key[len(prefix):]] = val
+                # 2. Overlay Folder settings
+                if folder_name in config:
+                    for key, val in config[folder_name].items():
+                        if key.startswith(prefix):
+                            settings[key[len(prefix):]] = val
+                return settings
+
+            extra_fe_dict = collect_prefixed_settings("fe.")
+            if extra_fe_dict: cmd.extend(["--extra_fe", json.dumps(extra_fe_dict)])
+            
+            extra_sm_dict = collect_prefixed_settings("sm.")
+            if extra_sm_dict: cmd.extend(["--extra_sm", json.dumps(extra_sm_dict)])
+            
+            extra_ma_dict = collect_prefixed_settings("ma.")
+            if extra_ma_dict: cmd.extend(["--extra_ma", json.dumps(extra_ma_dict)])
 
             print(f"Command: {' '.join(cmd)}")
             try:

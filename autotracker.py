@@ -3,6 +3,7 @@ import sys
 import subprocess
 import glob
 import argparse
+import json
 
 # System Binaries (Ensure these are in your PATH)
 FFMPEG = "ffmpeg"
@@ -29,7 +30,7 @@ def run_command(cmd, error_msg, quiet=False):
         print(error_msg)
         return False
 
-def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mask_path=None, multi_cams=False, acescg=False, lut_path=None, mapper="glomap", camera_model=None, loop=False, loop_period=5, loop_num_images=50, vocab_tree_path=None):
+def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mask_path=None, multi_cams=False, acescg=False, lut_path=None, mapper="glomap", camera_model=None, loop=False, loop_period=5, loop_num_images=50, vocab_tree_path=None, extra_fe=None, extra_sm=None, extra_ma=None):
     # Get base name and extension
     base_name = os.path.splitext(os.path.basename(video_path))[0]
     ext = os.path.splitext(video_path)[1]
@@ -176,6 +177,11 @@ def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mas
     if final_mask_path:
         cmd_colmap_fe.extend(["--ImageReader.mask_path", final_mask_path])
 
+    # Inject extra feature extraction args
+    if extra_fe:
+        for k, v in extra_fe.items():
+            cmd_colmap_fe.extend([f"--{k}", str(v)])
+
     if not run_command(cmd_colmap_fe, f"        × feature_extractor failed – skipping \"{base_name}\"."):
         return
 
@@ -194,6 +200,12 @@ def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mas
         ])
         if vocab_tree_path:
             cmd_colmap_sm.extend(["--SequentialMatching.vocab_tree_path", vocab_tree_path])
+    
+    # Inject extra sequential matcher args
+    if extra_sm:
+        for k, v in extra_sm.items():
+            cmd_colmap_sm.extend([f"--{k}", str(v)])
+
     if not run_command(cmd_colmap_sm, f"        × sequential_matcher failed – skipping \"{base_name}\"."):
         return
 
@@ -216,6 +228,11 @@ def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mas
             "--output_path", sparse_dir
         ]
         fail_msg = f"        × glomap mapper failed – skipping \"{base_name}\"."
+
+    # Inject extra mapper args
+    if extra_ma:
+        for k, v in extra_ma.items():
+            cmd_mapper.extend([f"--{k}", str(v)])
 
     if not run_command(cmd_mapper, fail_msg):
         return
@@ -259,6 +276,9 @@ def main():
     parser.add_argument("--loop_period", type=int, default=5, help="COLMAP loop detection period (default: 5)")
     parser.add_argument("--loop_num_images", type=int, default=50, help="COLMAP loop detection number of images (default: 50)")
     parser.add_argument("--vocab_tree_path", default="vocab_tree_faiss_flickr100K_words32K.bin", help="Path to vocabulary tree for loop detection (default: vocab_tree_faiss_flickr100K_words32K.bin)")
+    parser.add_argument("--extra_fe", help="Extra arguments for feature extraction (JSON string)")
+    parser.add_argument("--extra_sm", help="Extra arguments for sequential matching (JSON string)")
+    parser.add_argument("--extra_ma", help="Extra arguments for mapping (JSON string)")
     
     # If no arguments provided, print help
     if len(sys.argv) == 1:
@@ -295,9 +315,18 @@ def main():
         input("Press Enter to exit...")
         sys.exit(0)
 
-    print("==============================================================")
-    print(f" Starting {'GLOMAP' if args.mapper == 'glomap' else 'COLMAP Global'} pipeline on {total} video(s) ...")
-    print("==============================================================")
+    # Parse extra args if provided
+    def parse_extra(extra_str):
+        if not extra_str: return None
+        try:
+            return json.loads(extra_str)
+        except json.JSONDecodeError:
+            print(f"[WARN] Failed to parse extra arguments JSON: {extra_str}")
+            return None
+
+    extra_fe = parse_extra(args.extra_fe)
+    extra_sm = parse_extra(args.extra_sm)
+    extra_ma = parse_extra(args.extra_ma)
 
     for idx, video_file in enumerate(video_files, 1):
         process_video(
@@ -316,7 +345,10 @@ def main():
             loop=args.loop,
             loop_period=args.loop_period,
             loop_num_images=args.loop_num_images,
-            vocab_tree_path=args.vocab_tree_path
+            vocab_tree_path=args.vocab_tree_path,
+            extra_fe=extra_fe,
+            extra_sm=extra_sm,
+            extra_ma=extra_ma
         )
 
     print("--------------------------------------------------------------")

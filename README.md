@@ -115,6 +115,21 @@ acescg = true
 *   `loop_num_images`: Number of images for loop detection (int)
 *   `vocab_tree_path`: Path to vocabulary tree (string)
 
+### Advanced Parameter Injection (INI Only)
+
+You can pass any COLMAP internal parameter by using specific prefixes in the `batch_config.ini` file. These will be automatically injected into the corresponding processing stage:
+
+*   `fe.<Parameter>`: Injected into `feature_extractor`
+*   `sm.<Parameter>`: Injected into `sequential_matcher`
+*   `ma.<Parameter>`: Injected into `mapper` (or `global_mapper`)
+
+**Example:**
+```ini
+[global]
+fe.SiftExtraction.peak_threshold = 0.01
+sm.SequentialMatching.min_num_matches = 20
+```
+
 ## Quick Start / Demo
 
 A batch script `run_demo_test.bat` is included to easily test the pipeline using the provided demo data.
