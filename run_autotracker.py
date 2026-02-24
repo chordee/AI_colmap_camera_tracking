@@ -9,11 +9,22 @@ def main():
     parser.add_argument("input_path", help="Path to input directory (videos)")
     parser.add_argument("output_path", help="Path to output directory")
     parser.add_argument("--scale", type=float, default=0.5, help="Scale argument (default: 0.5)")
+    parser.add_argument("--overlap", type=int, default=12, help="Sequential matching overlap (default: 12)")
     parser.add_argument("--skip-houdini", action="store_true", help="Skip Houdini scene generation")
     parser.add_argument("--hfs", help="Path to Houdini installation (optional)")
     parser.add_argument("--multi-cams", action="store_true", help="Allow processing multiple videos with different camera settings")
     parser.add_argument("--acescg", action="store_true", help="Convert input ACEScg colorspace to sRGB")
     parser.add_argument("--lut", help="Path to .cube LUT file for color conversion (optional)")
+    parser.add_argument("--mask", help="Path to mask directory root (optional)")
+    parser.add_argument("--mapper", choices=["glomap", "colmap"], default="glomap", help="Choose mapper: glomap (standalone) or colmap (integrated Global Mapper). Default: glomap")
+    parser.add_argument("--camera_model", help="Specify COLMAP camera model (e.g., OPENCV, PINHOLE, SIMPLE_RADIAL). Default: Auto (COLMAP decides)")
+    parser.add_argument("--loop", action="store_true", help="Enable COLMAP loop detection in sequential matching")
+    parser.add_argument("--loop_period", type=int, default=5, help="COLMAP loop detection period (default: 5)")
+    parser.add_argument("--loop_num_images", type=int, default=50, help="COLMAP loop detection number of images (default: 50)")
+    parser.add_argument("--vocab_tree_path", default="vocab_tree_faiss_flickr100K_words32K.bin", help="Path to vocabulary tree for loop detection")
+    parser.add_argument("--extra_fe", help="Extra arguments for feature extraction (JSON string or path to .json file)")
+    parser.add_argument("--extra_sm", help="Extra arguments for sequential matching (JSON string or path to .json file)")
+    parser.add_argument("--extra_ma", help="Extra arguments for mapping (JSON string or path to .json file)")
 
     args = parser.parse_args()
 
@@ -35,13 +46,32 @@ def main():
     autotracker_script = os.path.join(script_dir, "autotracker.py")
 
     # Command 1: python autotracker.py <input_path> <output_path> --scale <scale>
-    cmd1 = [sys.executable, autotracker_script, input_path, output_path, "--scale", str(scale)]
+    cmd1 = [sys.executable, autotracker_script, input_path, output_path, "--scale", str(scale), "--overlap", str(args.overlap)]
     if args.multi_cams:
         cmd1.append("--multi-cams")
     if args.acescg:
         cmd1.append("--acescg")
     if args.lut:
         cmd1.extend(["--lut", args.lut])
+    if args.mask:
+        cmd1.extend(["--mask", args.mask])
+    if args.mapper:
+        cmd1.extend(["--mapper", args.mapper])
+    if args.camera_model:
+        cmd1.extend(["--camera_model", args.camera_model])
+    if args.loop:
+        cmd1.append("--loop")
+        cmd1.extend(["--loop_period", str(args.loop_period)])
+        cmd1.extend(["--loop_num_images", str(args.loop_num_images)])
+        if args.vocab_tree_path:
+            cmd1.extend(["--vocab_tree_path", args.vocab_tree_path])
+            
+    if args.extra_fe:
+        cmd1.extend(["--extra_fe", args.extra_fe])
+    if args.extra_sm:
+        cmd1.extend(["--extra_sm", args.extra_sm])
+    if args.extra_ma:
+        cmd1.extend(["--extra_ma", args.extra_ma])
         
     print(f"Running: {' '.join(cmd1)}")
     try:
@@ -128,7 +158,16 @@ def main():
 
         # Determine hython executable
         if args.hfs:
-            hython_exec = os.path.join(args.hfs, "bin", "hython")
+            # Clean up the path (remove quotes if any)
+            hfs_path = args.hfs.strip().strip('"').strip("'")
+            
+            # Smart check for bin folder
+            if os.path.basename(hfs_path).lower() == "bin":
+                hython_dir = hfs_path
+            else:
+                hython_dir = os.path.join(hfs_path, "bin")
+            
+            hython_exec = os.path.join(hython_dir, "hython")
             if sys.platform == "win32":
                 hython_exec += ".exe"
         else:
@@ -143,14 +182,37 @@ def main():
             hip_path = os.path.join(folder_path, f"{folder}.hip").replace("\\", "/")
 
             if os.path.exists(ply_path) and os.path.exists(json_path):
-                cmd_houdini = [hython_exec, houdini_script, json_path, ply_path, hip_path]
-                print(f"Running: {' '.join(cmd_houdini)}")
+                # Ensure paths are absolutely correct for the OS
+                h_exec = os.path.abspath(hython_exec)
+                h_script = os.path.abspath(houdini_script)
+                h_json = os.path.abspath(json_path)
+                h_ply = os.path.abspath(ply_path)
+                h_hip = os.path.abspath(hip_path)
+
+                cmd_houdini = [h_exec, h_script, h_json, h_ply, h_hip]
+                print(f"Running Houdini: {' '.join(cmd_houdini)}")
+                
+                # Check if executable exists and is not a directory
+                if not os.path.isfile(h_exec):
+                    print(f"[ERROR] Hython executable not found or is a directory: {h_exec}")
+                    continue
+
                 try:
-                    subprocess.run(cmd_houdini, check=True)
-                except subprocess.CalledProcessError:
-                    print(f"[ERROR] build_houdini_scene.py failed for {folder}.")
-                except FileNotFoundError:
-                    print(f"[ERROR] {hython_exec} executable not found. Ensure Houdini is in PATH or --hfs is correct.")
+                    # Clean environment to avoid Houdini picking up this script's Python venv
+                    clean_env = os.environ.copy()
+                    clean_env.pop("PYTHONPATH", None)
+                    clean_env.pop("PYTHONHOME", None)
+                    
+                    # On Windows, sometimes shell=True helps with certain environment/path issues for Houdini
+                    # but list-based is generally preferred. We'll stick to list but ensure absolute paths.
+                    subprocess.run(cmd_houdini, check=True, env=clean_env)
+                except subprocess.CalledProcessError as e:
+                    print(f"[ERROR] build_houdini_scene.py failed for {folder} with exit code {e.returncode}.")
+                except PermissionError:
+                    print(f"[ERROR] Access denied when trying to run: {h_exec}")
+                    print(f"        This might be due to file permissions, antivirus blocking, or {h_exec} being a directory.")
+                except Exception as e:
+                    print(f"[ERROR] An unexpected error occurred while running Houdini: {e}")
     else:
         print("Skipping Houdini scene generation as per argument.")
 

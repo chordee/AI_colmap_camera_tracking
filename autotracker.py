@@ -3,6 +3,7 @@ import sys
 import subprocess
 import glob
 import argparse
+import json
 
 # System Binaries (Ensure these are in your PATH)
 FFMPEG = "ffmpeg"
@@ -29,7 +30,7 @@ def run_command(cmd, error_msg, quiet=False):
         print(error_msg)
         return False
 
-def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mask_path=None, multi_cams=False, acescg=False, lut_path=None):
+def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mask_path=None, multi_cams=False, acescg=False, lut_path=None, mapper="glomap", camera_model=None, loop=False, loop_period=5, loop_num_images=50, vocab_tree_path=None, extra_fe=None, extra_sm=None, extra_ma=None):
     # Get base name and extension
     base_name = os.path.splitext(os.path.basename(video_path))[0]
     ext = os.path.splitext(video_path)[1]
@@ -54,6 +55,55 @@ def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mas
     except OSError as e:
         print(f"        [ERROR] Could not create directories: {e}")
         return
+
+    # --- Mask Detection & Preparation Logic ---
+    final_mask_path = None
+    
+    # 1. Try deriving from --mask argument
+    if mask_path:
+        # Case A: mask_path is a root containing <basename>_mask
+        candidate = os.path.join(mask_path, f"{base_name}_mask")
+        if os.path.isdir(candidate):
+            final_mask_path = candidate
+        # Case B: mask_path itself is the directory (fallback/direct mode)
+        elif os.path.isdir(mask_path):
+             final_mask_path = mask_path
+
+    # 2. Try auto-detection in video directory
+    if not final_mask_path:
+        # Check sibling directory (e.g., video_dir/basename_mask)
+        candidate = os.path.join(os.path.dirname(video_path), f"{base_name}_mask")
+        if os.path.isdir(candidate):
+            final_mask_path = candidate
+
+    # 3. Format check and fix
+    if final_mask_path:
+        print(f"        • Mask directory: {final_mask_path}")
+        # Check for *.jpg.png
+        has_jpg_png = glob.glob(os.path.join(final_mask_path, "*.jpg.png"))
+        
+        # If no .jpg.png found, try to rename .png files
+        if not has_jpg_png:
+            pngs = glob.glob(os.path.join(final_mask_path, "*.png"))
+            if pngs:
+                print(f"        • Formatting mask filenames (adding .jpg extension)...")
+                renamed_count = 0
+                for p in pngs:
+                    if p.lower().endswith(".jpg.png"): 
+                        continue
+                    
+                    # Rename frame_XXXXX.png -> frame_XXXXX.jpg.png
+                    new_name = p[:-4] + ".jpg.png"
+                    try:
+                        os.rename(p, new_name)
+                        renamed_count += 1
+                    except OSError as e:
+                        print(f"          [WARN] Failed to rename {os.path.basename(p)}: {e}")
+                print(f"          -> Renamed {renamed_count} files.")
+            else:
+                # Folder exists but no PNGs found?
+                print(f"          [WARN] Mask directory exists but contains no .png files. Ignoring.")
+                final_mask_path = None
 
     # 1) Extract every frame
     print("        [1/4] Extracting frames ...")
@@ -91,9 +141,17 @@ def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mas
         return
 
     # Check if frames were extracted
-    if not glob.glob(os.path.join(img_dir, "*.jpg")):
+    all_images = glob.glob(os.path.join(img_dir, "*.jpg"))
+    if not all_images:
         print(f"        × No frames extracted – skipping \"{base_name}\".")
         return
+
+    # Optional: Check mask count consistency
+    if final_mask_path:
+        all_masks = glob.glob(os.path.join(final_mask_path, "*.jpg.png"))
+        if len(all_images) != len(all_masks):
+            print(f"        [WARN] Frame count mismatch! Images: {len(all_images)}, Masks: {len(all_masks)}")
+            print(f"               COLMAP will only apply masks to matching filenames.")
 
     # 2) Feature extraction (COLMAP)
     print("        [2/4] COLMAP feature_extractor ...")
@@ -101,16 +159,28 @@ def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mas
         COLMAP, "feature_extractor",
         "--database_path", database_path,
         "--image_path", img_dir,
-        "--SiftExtraction.use_gpu", "1"
     ]
+
+    if camera_model:
+        cmd_colmap_fe.extend(["--ImageReader.camera_model", camera_model])
+
+    if mapper == "colmap":
+        cmd_colmap_fe.extend(["--FeatureExtraction.use_gpu", "1"])
+    else:
+        cmd_colmap_fe.extend(["--SiftExtraction.use_gpu", "1"])
     
     if multi_cams:
         cmd_colmap_fe.extend(["--ImageReader.single_camera_per_folder", "1"])
     else:
         cmd_colmap_fe.extend(["--ImageReader.single_camera", "1"])
 
-    if mask_path:
-        cmd_colmap_fe.extend(["--ImageReader.mask_path", mask_path])
+    if final_mask_path:
+        cmd_colmap_fe.extend(["--ImageReader.mask_path", final_mask_path])
+
+    # Inject extra feature extraction args
+    if extra_fe:
+        for k, v in extra_fe.items():
+            cmd_colmap_fe.extend([f"--{k}", str(v)])
 
     if not run_command(cmd_colmap_fe, f"        × feature_extractor failed – skipping \"{base_name}\"."):
         return
@@ -122,18 +192,49 @@ def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mas
         "--database_path", database_path,
         "--SequentialMatching.overlap", str(overlap)
     ]
+    if loop:
+        cmd_colmap_sm.extend([
+            "--SequentialMatching.loop_detection", "1",
+            "--SequentialMatching.loop_detection_period", str(loop_period),
+            "--SequentialMatching.loop_detection_num_images", str(loop_num_images)
+        ])
+        if vocab_tree_path:
+            cmd_colmap_sm.extend(["--SequentialMatching.vocab_tree_path", vocab_tree_path])
+    
+    # Inject extra sequential matcher args
+    if extra_sm:
+        for k, v in extra_sm.items():
+            cmd_colmap_sm.extend([f"--{k}", str(v)])
+
     if not run_command(cmd_colmap_sm, f"        × sequential_matcher failed – skipping \"{base_name}\"."):
         return
 
-    # 4) Sparse reconstruction (GLOMAP)
-    print("        [4/4] GLOMAP mapper ...")
-    cmd_glomap = [
-        GLOMAP, "mapper",
-        "--database_path", database_path,
-        "--image_path", img_dir,
-        "--output_path", sparse_dir
-    ]
-    if not run_command(cmd_glomap, f"        × glomap mapper failed – skipping \"{base_name}\"."):
+    # 4) Sparse reconstruction
+    if mapper == "colmap":
+        print("        [4/4] COLMAP global mapper ...")
+        cmd_mapper = [
+            COLMAP, "global_mapper",
+            "--database_path", database_path,
+            "--image_path", img_dir,
+            "--output_path", sparse_dir
+        ]
+        fail_msg = f"        × colmap global_mapper failed – skipping \"{base_name}\"."
+    else:
+        print("        [4/4] GLOMAP mapper ...")
+        cmd_mapper = [
+            GLOMAP, "mapper",
+            "--database_path", database_path,
+            "--image_path", img_dir,
+            "--output_path", sparse_dir
+        ]
+        fail_msg = f"        × glomap mapper failed – skipping \"{base_name}\"."
+
+    # Inject extra mapper args
+    if extra_ma:
+        for k, v in extra_ma.items():
+            cmd_mapper.extend([f"--{k}", str(v)])
+
+    if not run_command(cmd_mapper, fail_msg):
         return
 
     # Export TXT inside the model folder
@@ -169,6 +270,15 @@ def main():
     parser.add_argument("--multi-cams", action="store_true", help="Allow processing multiple videos with different camera settings")
     parser.add_argument("--acescg", action="store_true", help="Convert input ACEScg colorspace to sRGB")
     parser.add_argument("--lut", help="Path to .cube LUT file for color conversion (optional)")
+    parser.add_argument("--mapper", choices=["glomap", "colmap"], default="glomap", help="Choose mapper: glomap (standalone) or colmap (integrated GLOMAP, requires COLMAP >= 3.14). Default: glomap")
+    parser.add_argument("--camera_model", help="Specify COLMAP camera model (e.g., OPENCV, PINHOLE, SIMPLE_RADIAL). Default: Auto (COLMAP decides)")
+    parser.add_argument("--loop", action="store_true", help="Enable COLMAP loop detection in sequential matching")
+    parser.add_argument("--loop_period", type=int, default=5, help="COLMAP loop detection period (default: 5)")
+    parser.add_argument("--loop_num_images", type=int, default=50, help="COLMAP loop detection number of images (default: 50)")
+    parser.add_argument("--vocab_tree_path", default="vocab_tree_faiss_flickr100K_words32K.bin", help="Path to vocabulary tree for loop detection (default: vocab_tree_faiss_flickr100K_words32K.bin)")
+    parser.add_argument("--extra_fe", help="Extra arguments for feature extraction (JSON string or path to .json file)")
+    parser.add_argument("--extra_sm", help="Extra arguments for sequential matching (JSON string or path to .json file)")
+    parser.add_argument("--extra_ma", help="Extra arguments for mapping (JSON string or path to .json file)")
     
     # If no arguments provided, print help
     if len(sys.argv) == 1:
@@ -205,9 +315,34 @@ def main():
         input("Press Enter to exit...")
         sys.exit(0)
 
-    print("==============================================================")
-    print(f" Starting GLOMAP pipeline on {total} video(s) ...")
-    print("==============================================================")
+    # Parse extra args if provided (supports JSON string or file path)
+    def parse_extra(extra_input):
+        if not extra_input: return None
+        
+        # 1. Try treating it as a file path
+        if os.path.isfile(extra_input):
+            try:
+                with open(extra_input, 'r') as f:
+                    print(f"        • Loading extra arguments from: {extra_input}")
+                    return json.load(f)
+            except Exception as e:
+                print(f"        [WARN] Failed to read JSON file {extra_input}: {e}")
+                return None
+
+        # 2. Try parsing as a raw JSON string
+        try:
+            return json.loads(extra_input)
+        except json.JSONDecodeError:
+            # If it's not JSON and not a file, print a helpful warning
+            if extra_input.startswith('{') or extra_input.startswith('['):
+                print(f"        [WARN] Failed to parse extra arguments JSON string: {extra_input}")
+            else:
+                print(f"        [WARN] Extra argument is neither a valid file path nor a valid JSON string: {extra_input}")
+            return None
+
+    extra_fe = parse_extra(args.extra_fe)
+    extra_sm = parse_extra(args.extra_sm)
+    extra_ma = parse_extra(args.extra_ma)
 
     for idx, video_file in enumerate(video_files, 1):
         process_video(
@@ -220,7 +355,16 @@ def main():
             mask_path=mask_path, 
             multi_cams=args.multi_cams,
             acescg=args.acescg,
-            lut_path=lut_path
+            lut_path=lut_path,
+            mapper=args.mapper,
+            camera_model=args.camera_model,
+            loop=args.loop,
+            loop_period=args.loop_period,
+            loop_num_images=args.loop_num_images,
+            vocab_tree_path=args.vocab_tree_path,
+            extra_fe=extra_fe,
+            extra_sm=extra_sm,
+            extra_ma=extra_ma
         )
 
     print("--------------------------------------------------------------")

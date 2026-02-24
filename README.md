@@ -37,22 +37,115 @@ pip install numpy opencv-python
 The main entry point is `run_autotracker.py`.
 
 ```bash
-python run_autotracker.py <input_videos_dir> <output_dir> --scale <scale_factor> [--skip-houdini] [--hfs <houdini_path>] [--multi-cams] [--acescg] [--lut <lut_file>]
+python run_autotracker.py <input_videos_dir> <output_dir> --scale <scale_factor> [--skip-houdini] [--hfs <houdini_path>] [--multi-cams] [--acescg] [--lut <lut_file>] [--mask <mask_root>] [--loop] [--loop_period <period>] [--loop_num_images <count>]
 ```
 
 *   `input_videos_dir`: Directory containing your source video files (e.g., `.mp4`, `.mov`).
 *   `output_dir`: Directory where the results (images, sparse models, database) will be saved.
 *   `--scale`: (Optional) Image scaling factor (default: `0.5`).
+*   `--overlap`: (Optional) Sequential matching overlap (default: `12`).
 *   `--skip-houdini`: (Optional) Skip the generation of the Houdini `.hip` scene file.
 *   `--hfs`: (Optional) Path to your Houdini installation directory (e.g., `C:\Program Files\Side Effects Software\Houdini 20.0.xxx`). If not provided, the script assumes `hython` is in your PATH.
 *   `--multi-cams`: (Optional) If set, COLMAP will treat the input as multiple cameras (one per folder/video) instead of a single shared camera. Useful if videos were shot with different devices or zoom levels.
 *   `--acescg`: (Optional) Converts input video from ACEScg color space to sRGB (using zscale filter).
 *   `--lut`: (Optional) Path to a `.cube` LUT file for custom color space conversion.
+*   `--mask`: (Optional) Path to a directory containing masks.
+*   `--mapper`: (Optional) Choose mapper: `glomap` (standalone, default) or `colmap` (integrated Global Mapper). **Note:** `colmap` option requires COLMAP >= 3.14 which integrates GLOMAP.
+*   `--camera_model`: (Optional) Specify COLMAP camera model (e.g., `OPENCV`, `PINHOLE`, `SIMPLE_RADIAL`). Default is Auto (COLMAP decides).
+*   `--loop`: (Optional) Enable COLMAP loop detection in sequential matching.
+*   `--loop_period`: (Optional) COLMAP loop detection period (default: `5`).
+*   `--loop_num_images`: (Optional) COLMAP loop detection number of images (default: `50`).
+*   `--vocab_tree_path`: (Optional) Path to vocabulary tree for loop detection (default: `vocab_tree_faiss_flickr100K_words32K.bin`).
+*   `--extra_fe`: (Optional) Extra arguments for feature extraction stage. Accepts a JSON string or a path to a `.json` file.
+*   `--extra_sm`: (Optional) Extra arguments for sequential matching stage. Accepts a JSON string or a path to a `.json` file.
+*   `--extra_ma`: (Optional) Extra arguments for mapping stage. Accepts a JSON string or a path to a `.json` file.
+
+#### Example using a JSON file:
+
+1. Create a `params.json`:
+```json
+{
+    "SiftExtraction.peak_threshold": 0.01,
+    "SiftExtraction.max_num_features": 8192
+}
+```
+
+2. Run the tracker:
+```bash
+python run_autotracker.py ./in ./out --extra_fe params.json
+```
+
+### Masking Support
+
+The pipeline supports automatic detection of image masks for reconstruction (e.g., for moving objects or water).
+
+**Masking Rules:**
+1.  **Auto-Detection:** For a video file named `shot01.mp4`, the script automatically looks for a **sibling directory** named `shot01_mask` (located alongside the video file).
+2.  **Custom Root:** If `--mask <path>` is provided, the script will look for `<video_name>_mask` inside that specified path.
+3.  **Filename Format:** 
+    *   Masks must be PNG files.
+    *   The script expects filenames to be `frame_000001.jpg.png` (matching the extracted frames).
+    *   **Auto-Formatting:** If the script finds `frame_000001.png`, it will automatically rename it to `frame_000001.jpg.png` to comply with COLMAP requirements.
 
 ### Example
 
 ```bash
 python run_autotracker.py ./videos ./output --scale 0.5 --hfs "C:/Program Files/Side Effects Software/Houdini 20.0.625"
+```
+
+## Batch Processing with Configuration
+
+You can use `batch_run.py` to process multiple folders within a target directory. To customize parameters for specific folders, you can place a `batch_config.ini` file in the target directory.
+
+### Usage
+```bash
+python batch_run.py <target_directory>
+```
+
+### Configuration Format (batch_config.ini)
+If a folder name matches a section name in the INI file, the specified settings will override the defaults.
+
+```ini
+[shot_01]
+scale = 0.8
+camera_model = OPENCV
+overlap = 16
+skip_houdini = true
+
+[shot_02]
+mapper = colmap
+acescg = true
+```
+
+**Supported INI Keys:**
+*   `scale`: Image scaling factor (float)
+*   `overlap`: Sequential matching overlap (int)
+*   `mapper`: `glomap` or `colmap`
+*   `camera_model`: e.g., `OPENCV`, `PINHOLE`
+*   `mask`: Path to mask directory
+*   `lut`: Path to `.cube` file
+*   `hfs`: Path to Houdini installation
+*   `multi_cams`: `true` or `false`
+*   `acescg`: `true` or `false`
+*   `skip_houdini`: `true` or `false`
+*   `loop`: `true` or `false`
+*   `loop_period`: Loop detection period (int)
+*   `loop_num_images`: Number of images for loop detection (int)
+*   `vocab_tree_path`: Path to vocabulary tree (string)
+
+### Advanced Parameter Injection (INI Only)
+
+You can pass any COLMAP internal parameter by using specific prefixes in the `batch_config.ini` file. These will be automatically injected into the corresponding processing stage:
+
+*   `fe.<Parameter>`: Injected into `feature_extractor`
+*   `sm.<Parameter>`: Injected into `sequential_matcher`
+*   `ma.<Parameter>`: Injected into `mapper` (or `global_mapper`)
+
+**Example:**
+```ini
+[global]
+fe.SiftExtraction.peak_threshold = 0.01
+sm.SequentialMatching.min_num_matches = 20
 ```
 
 ## Quick Start / Demo
@@ -76,7 +169,7 @@ You can verify the installation and dependencies by running this demo.
 2.  **Tracking (`autotracker.py`)**:
     *   Extracts frames from videos.
     *   Runs COLMAP feature extraction and matching.
-    *   Runs GLOMAP mapper for reconstruction.
+    *   Runs **GLOMAP** (standalone) or **COLMAP Global Mapper** (requires COLMAP >= 3.14) for reconstruction.
     *   Exports the model to TXT format.
 3.  **Conversion**: Converts the sparse model to PLY format.
 4.  **NeRF Prep**: Runs `colmap2nerf.py` to generate `transforms.json`.
