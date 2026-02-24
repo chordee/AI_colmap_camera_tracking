@@ -29,7 +29,7 @@ def run_command(cmd, error_msg, quiet=False):
         print(error_msg)
         return False
 
-def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mask_path=None, multi_cams=False, acescg=False, lut_path=None, mapper="glomap", camera_model=None):
+def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mask_path=None, multi_cams=False, acescg=False, lut_path=None, mapper="glomap", camera_model=None, loop=False, loop_period=5, loop_num_images=50):
     # Get base name and extension
     base_name = os.path.splitext(os.path.basename(video_path))[0]
     ext = os.path.splitext(video_path)[1]
@@ -186,6 +186,12 @@ def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mas
         "--database_path", database_path,
         "--SequentialMatching.overlap", str(overlap)
     ]
+    if loop:
+        cmd_colmap_sm.extend([
+            "--SequentialMatching.loop_detection", "1",
+            "--SequentialMatching.loop_detection_period", str(loop_period),
+            "--SequentialMatching.loop_detection_num_images", str(loop_num_images)
+        ])
     if not run_command(cmd_colmap_sm, f"        × sequential_matcher failed – skipping \"{base_name}\"."):
         return
 
@@ -247,6 +253,9 @@ def main():
     parser.add_argument("--lut", help="Path to .cube LUT file for color conversion (optional)")
     parser.add_argument("--mapper", choices=["glomap", "colmap"], default="glomap", help="Choose mapper: glomap (standalone) or colmap (integrated GLOMAP, requires COLMAP >= 3.14). Default: glomap")
     parser.add_argument("--camera_model", help="Specify COLMAP camera model (e.g., OPENCV, PINHOLE, SIMPLE_RADIAL). Default: Auto (COLMAP decides)")
+    parser.add_argument("--loop", action="store_true", help="Enable COLMAP loop detection in sequential matching")
+    parser.add_argument("--loop-period", type=int, default=5, help="COLMAP loop detection period (default: 5)")
+    parser.add_argument("--loop-num-images", type=int, default=50, help="COLMAP loop detection number of images (default: 50)")
     
     # If no arguments provided, print help
     if len(sys.argv) == 1:
@@ -300,7 +309,10 @@ def main():
             acescg=args.acescg,
             lut_path=lut_path,
             mapper=args.mapper,
-            camera_model=args.camera_model
+            camera_model=args.camera_model,
+            loop=args.loop,
+            loop_period=args.loop_period,
+            loop_num_images=args.loop_num_images
         )
 
     print("--------------------------------------------------------------")
