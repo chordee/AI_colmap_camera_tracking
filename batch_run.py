@@ -37,6 +37,7 @@ def main():
     # Using 'global' as the default section name
     config_path = os.path.join(target_path, "batch_config.ini")
     config = configparser.ConfigParser(default_section='global')
+    config.optionxform = str # Preserve case sensitivity
     
     if os.path.exists(config_path):
         print(f"[INFO] Found configuration file: {config_path}")
