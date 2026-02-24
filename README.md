@@ -60,6 +60,21 @@ python run_autotracker.py <input_videos_dir> <output_dir> --scale <scale_factor>
 *   `--extra_sm`: (Optional) Extra arguments for sequential matching stage. Accepts a JSON string or a path to a `.json` file.
 *   `--extra_ma`: (Optional) Extra arguments for mapping stage. Accepts a JSON string or a path to a `.json` file.
 
+#### Example using a JSON file:
+
+1. Create a `params.json`:
+```json
+{
+    "SiftExtraction.peak_threshold": 0.01,
+    "SiftExtraction.max_num_features": 8192
+}
+```
+
+2. Run the tracker:
+```bash
+python run_autotracker.py ./in ./out --extra_fe params.json
+```
+
 ### Masking Support
 
 The pipeline supports automatic detection of image masks for reconstruction (e.g., for moving objects or water).
