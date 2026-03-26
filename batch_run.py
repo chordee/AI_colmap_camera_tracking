@@ -24,6 +24,8 @@ def main():
     parser.add_argument("--loop_period", type=int, help="Default loop detection period")
     parser.add_argument("--loop_num_images", type=int, help="Default loop detection number of images")
     parser.add_argument("--vocab_tree_path", help="Default vocabulary tree path")
+    parser.add_argument("--focal_length_mm", type=float, default=None, help="Lens focal length in mm (e.g. 24)")
+    parser.add_argument("--sensor_width_mm", type=float, default=None, help="Sensor width in mm (default: 36.0 full-frame)")
     
     args = parser.parse_args()
 
@@ -123,6 +125,13 @@ def main():
                 if s_loop_n: cmd.extend(['--loop_num_images', str(s_loop_n)])
                 s_vocab = get_setting('vocab_tree_path', args.vocab_tree_path)
                 if s_vocab: cmd.extend(['--vocab_tree_path', s_vocab])
+
+            s_focal = get_setting('focal_length_mm', args.focal_length_mm)
+            if s_focal:
+                cmd.extend(['--focal_length_mm', str(s_focal)])
+                s_sensor = get_setting('sensor_width_mm', args.sensor_width_mm)
+                if s_sensor:
+                    cmd.extend(['--sensor_width_mm', str(s_sensor)])
 
             # Handle dynamic extra arguments (fe.*, sm.*, ma.*)
             def collect_prefixed_settings(prefix):

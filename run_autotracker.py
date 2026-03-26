@@ -25,6 +25,8 @@ def main():
     parser.add_argument("--extra_fe", help="Extra arguments for feature extraction (JSON string or path to .json file)")
     parser.add_argument("--extra_sm", help="Extra arguments for sequential matching (JSON string or path to .json file)")
     parser.add_argument("--extra_ma", help="Extra arguments for mapping (JSON string or path to .json file)")
+    parser.add_argument("--focal_length_mm", type=float, default=None, help="Lens focal length in mm (e.g. 24). Combined with --sensor_width_mm to set COLMAP camera_params.")
+    parser.add_argument("--sensor_width_mm", type=float, default=36.0, help="Sensor width in mm (default: 36.0 full-frame). Common values: ARRI LF=36.7, Super35=24.89, MFT=17.3")
 
     args = parser.parse_args()
 
@@ -72,6 +74,9 @@ def main():
         cmd1.extend(["--extra_sm", args.extra_sm])
     if args.extra_ma:
         cmd1.extend(["--extra_ma", args.extra_ma])
+    if args.focal_length_mm:
+        cmd1.extend(["--focal_length_mm", str(args.focal_length_mm)])
+        cmd1.extend(["--sensor_width_mm", str(args.sensor_width_mm)])
         
     print(f"Running: {' '.join(cmd1)}")
     try:

@@ -4,6 +4,7 @@ import subprocess
 import glob
 import argparse
 import json
+import cv2
 
 # System Binaries (Ensure these are in your PATH)
 FFMPEG = "ffmpeg"
@@ -30,7 +31,7 @@ def run_command(cmd, error_msg, quiet=False):
         print(error_msg)
         return False
 
-def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mask_path=None, multi_cams=False, acescg=False, lut_path=None, mapper="glomap", camera_model=None, loop=False, loop_period=5, loop_num_images=50, vocab_tree_path=None, extra_fe=None, extra_sm=None, extra_ma=None):
+def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mask_path=None, multi_cams=False, acescg=False, lut_path=None, mapper="glomap", camera_model=None, loop=False, loop_period=5, loop_num_images=50, vocab_tree_path=None, extra_fe=None, extra_sm=None, extra_ma=None, focal_length_mm=None, sensor_width_mm=36.0):
     # Get base name and extension
     base_name = os.path.splitext(os.path.basename(video_path))[0]
     ext = os.path.splitext(video_path)[1]
@@ -145,6 +146,42 @@ def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mas
     if not all_images:
         print(f"        × No frames extracted – skipping \"{base_name}\".")
         return
+
+    # Inject focal length as camera_params if specified
+    if focal_length_mm and not (extra_fe and "ImageReader.camera_params" in extra_fe):
+        first_img = cv2.imread(all_images[0])
+        if first_img is not None:
+            real_h, real_w = first_img.shape[:2]
+            fl_px = (focal_length_mm / sensor_width_mm) * real_w
+            cx = real_w / 2.0
+            cy = real_h / 2.0
+
+            model = camera_model or "OPENCV"
+            model_upper = model.upper()
+            if model_upper in ("SIMPLE_PINHOLE", "SIMPLE_RADIAL_FISHEYE"):
+                params_str = f"{fl_px},{cx},{cy}"
+                if model_upper == "SIMPLE_RADIAL_FISHEYE":
+                    params_str += ",0"
+            elif model_upper in ("PINHOLE",):
+                params_str = f"{fl_px},{fl_px},{cx},{cy}"
+            elif model_upper == "SIMPLE_RADIAL":
+                params_str = f"{fl_px},{cx},{cy},0"
+            elif model_upper == "RADIAL":
+                params_str = f"{fl_px},{cx},{cy},0,0"
+            else:
+                # OPENCV, OPENCV_FISHEYE, and others default to 8-param format
+                params_str = f"{fl_px},{fl_px},{cx},{cy},0,0,0,0"
+
+            print(f"        • Focal length: {focal_length_mm}mm / {sensor_width_mm}mm sensor → {fl_px:.1f}px  (camera_params: {params_str})")
+
+            if not camera_model:
+                camera_model = "OPENCV"
+
+            if extra_fe is None:
+                extra_fe = {}
+            extra_fe["ImageReader.camera_params"] = params_str
+        else:
+            print(f"        [WARN] Could not read first frame to compute focal length in pixels.")
 
     # Optional: Check mask count consistency
     if final_mask_path:
@@ -279,6 +316,8 @@ def main():
     parser.add_argument("--extra_fe", help="Extra arguments for feature extraction (JSON string or path to .json file)")
     parser.add_argument("--extra_sm", help="Extra arguments for sequential matching (JSON string or path to .json file)")
     parser.add_argument("--extra_ma", help="Extra arguments for mapping (JSON string or path to .json file)")
+    parser.add_argument("--focal_length_mm", type=float, default=None, help="Lens focal length in mm (e.g. 24). Combined with --sensor_width_mm to set COLMAP camera_params.")
+    parser.add_argument("--sensor_width_mm", type=float, default=36.0, help="Sensor width in mm (default: 36.0 full-frame). Common values: ARRI LF=36.7, Super35=24.89, MFT=17.3")
     
     # If no arguments provided, print help
     if len(sys.argv) == 1:
@@ -364,7 +403,9 @@ def main():
             vocab_tree_path=args.vocab_tree_path,
             extra_fe=extra_fe,
             extra_sm=extra_sm,
-            extra_ma=extra_ma
+            extra_ma=extra_ma,
+            focal_length_mm=args.focal_length_mm,
+            sensor_width_mm=args.sensor_width_mm
         )
 
     print("--------------------------------------------------------------")
