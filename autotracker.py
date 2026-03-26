@@ -197,6 +197,14 @@ def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mas
             if extra_fe is None:
                 extra_fe = {}
             extra_fe["ImageReader.camera_params"] = params_str
+
+            # Prevent bundle adjustment from refining the focal length
+            if extra_ma is None:
+                extra_ma = {}
+            if mapper == "colmap":
+                extra_ma.setdefault("Mapper.ba_refine_focal_length", "0")
+            else:
+                extra_ma.setdefault("BundleAdjustment.refine_focal_length", "0")
         else:
             print(f"        [WARN] Could not read first frame to compute focal length in pixels.")
 
