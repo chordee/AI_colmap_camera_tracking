@@ -57,26 +57,22 @@ def undistort_process(json_path, output_dir, crop_to_valid):
     print(f"Camera Matrix:\n{K}")
     print(f"Distortion Coeffs: {D}")
 
-    # 3. 計算新的相機矩陣 (Optimal New Camera Matrix)
-    # 這一步很重要，因為拉直圖片後，原本的焦距和光心可能會改變
-    # alpha=0: 裁切掉所有黑邊 (視角變小)
-    # alpha=1: 保留所有像素 (會有黑邊)
-    alpha = 0 if crop_to_valid else 1
-    new_K, roi = cv2.getOptimalNewCameraMatrix(K, D, (w, h), alpha, (w, h))
-    
+    # 3. 保留原始相機矩陣，只移除畸變
+    # 使用原始 K 作為輸出相機矩陣，確保焦距不被改變。
+    # getOptimalNewCameraMatrix 會為了涵蓋所有畸變像素而縮小焦距，
+    # 導致 Houdini 顯示的焦段與指定值不符，因此不使用。
+    new_K = K.copy()
+    roi = (0, 0, w, h)
+
     # 用於裁切的 ROI (x, y, w, h)
     x, y, w_roi, h_roi = roi
 
     # 4. 準備新的 JSON 資料
     new_data = data.copy()
-    
-    # 更新 JSON 裡的內參為「去畸變後」的新數值
-    new_data["fl_x"] = new_K[0, 0]
-    new_data["fl_y"] = new_K[1, 1]
-    new_data["cx"] = new_K[0, 2]
-    new_data["cy"] = new_K[1, 2]
-    new_data["w"] = w_roi if crop_to_valid else w
-    new_data["h"] = h_roi if crop_to_valid else h
+
+    # 焦距與主點保持不變（new_K == K），僅將畸變係數歸零
+    new_data["w"] = w
+    new_data["h"] = h
     
     # 將畸變參數歸零 (因為圖片已經直了)
     for key in ["k1", "k2", "k3", "k4", "p1", "p2"]:
@@ -105,12 +101,8 @@ def undistort_process(json_path, output_dir, crop_to_valid):
         if img is None:
             continue
 
-        # 【核心步驟】去畸變
+        # 【核心步驟】去畸變（保留原始 K，僅移除畸變）
         dst = cv2.undistort(img, K, D, None, new_K)
-
-        # 裁切 (如果 CROP_TO_VALID = True)
-        if crop_to_valid:
-            dst = dst[y:y+h_roi, x:x+w_roi]
 
         # 存檔
         img_name = Path(rel_path).name
