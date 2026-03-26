@@ -1,68 +1,76 @@
 # AI Colmap Camera Tracking
 
-This project provides an automated pipeline for camera tracking and scene reconstruction using COLMAP, GLOMAP, and NeRF-compatible formats. It is designed to process video inputs, perform 3D reconstruction, and prepare the data for use in NeRF training or 3D software like Houdini.
+Automated pipeline for camera tracking and scene reconstruction using COLMAP and NeRF-compatible formats. Processes video inputs, performs sparse 3D reconstruction, undistorts footage, and exports camera data for use in Houdini or NeRF training.
 
 ## Features
 
-*   **Automated Workflow:** Batch processes multiple video files.
-*   **Frame Extraction:** Uses FFmpeg to extract frames from input videos.
-*   **Feature Extraction & Matching:** Utilizes COLMAP for feature extraction and sequential matching.
-*   **Sparse Reconstruction:** Uses **GLOMAP** for efficient sparse reconstruction.
-*   **NeRF Conversion:** Converts COLMAP data to `transforms.json` (NeRF format) using `colmap2nerf.py`.
-*   **Undistortion:** Includes tools to undistort images for Nerfstudio/COLMAP compatibility.
-*   **Houdini Integration:** Automatically generates a Houdini (`.hip`) scene with the reconstructed point cloud and camera setups.
+- **Automated Workflow:** Batch processes multiple video files.
+- **Frame Extraction:** Uses FFmpeg to extract frames from input videos.
+- **Feature Extraction & Matching:** Utilises COLMAP for feature extraction and sequential matching.
+- **Sparse Reconstruction:** Uses **COLMAP Global Mapper** (requires COLMAP 4.0+).
+- **NeRF Conversion:** Converts COLMAP data to `transforms.json` (NeRF format).
+- **Undistortion:** Expands the undistorted canvas to preserve all valid pixels while keeping the focal length unchanged. Optionally crops to the original canvas size (`--crop`).
+- **Houdini Integration:** Automatically generates a Houdini `.hip` scene with the reconstructed point cloud and animated camera. Correctly handles sensor size, canvas expansion, and principal-point offset.
 
 ## Prerequisites
 
-Ensure the following tools are installed and available in your system's PATH:
-
-1.  **Python 3.x**
-2.  **FFmpeg**: For video processing.
-3.  **[COLMAP](https://github.com/colmap/colmap)**: For feature extraction and matching.
-4.  **[GLOMAP](https://github.com/colmap/glomap)**: For sparse reconstruction (Mapper).
-5.  **Houdini (hython)**: Required if you want to generate Houdini scenes (`build_houdini_scene.py`).
+1. **Python 3.x**
+2. **FFmpeg** — video processing.
+3. **[COLMAP 4.0+](https://github.com/colmap/colmap)** — feature extraction, matching, and Global Mapper reconstruction.
+4. **Houdini (hython)** — required only for Houdini scene generation.
 
 ### Python Dependencies
-
-Install the required Python packages:
 
 ```bash
 pip install numpy opencv-python
 ```
 
-*Optional:* For automatic object masking in `colmap2nerf.py`, you will need PyTorch and Detectron2.
+*Optional:* For automatic object masking in `colmap2nerf.py`, PyTorch and Detectron2 are required.
 
 ## Usage
 
 The main entry point is `run_autotracker.py`.
 
 ```bash
-python run_autotracker.py <input_videos_dir> <output_dir> --scale <scale_factor> [--skip-houdini] [--hfs <houdini_path>] [--multi-cams] [--acescg] [--lut <lut_file>] [--mask <mask_root>] [--loop] [--loop_period <period>] [--loop_num_images <count>]
+python run_autotracker.py <input_videos_dir> <output_dir> [options]
 ```
 
-*   `input_videos_dir`: Directory containing your source video files (e.g., `.mp4`, `.mov`).
-*   `output_dir`: Directory where the results (images, sparse models, database) will be saved.
-*   `--scale`: (Optional) Image scaling factor (default: `0.5`).
-*   `--overlap`: (Optional) Sequential matching overlap (default: `12`).
-*   `--skip-houdini`: (Optional) Skip the generation of the Houdini `.hip` scene file.
-*   `--hfs`: (Optional) Path to your Houdini installation directory (e.g., `C:\Program Files\Side Effects Software\Houdini 20.0.xxx`). If not provided, the script assumes `hython` is in your PATH.
-*   `--multi-cams`: (Optional) If set, COLMAP will treat the input as multiple cameras (one per folder/video) instead of a single shared camera. Useful if videos were shot with different devices or zoom levels.
-*   `--acescg`: (Optional) Converts input video from ACEScg color space to sRGB (using zscale filter).
-*   `--lut`: (Optional) Path to a `.cube` LUT file for custom color space conversion.
-*   `--mask`: (Optional) Path to a directory containing masks.
-*   `--mapper`: (Optional) Choose mapper: `glomap` (standalone, default) or `colmap` (integrated Global Mapper). **Note:** `colmap` option requires COLMAP >= 3.14 which integrates GLOMAP.
-*   `--camera_model`: (Optional) Specify COLMAP camera model (e.g., `OPENCV`, `PINHOLE`, `SIMPLE_RADIAL`). Default is Auto (COLMAP decides).
-*   `--loop`: (Optional) Enable COLMAP loop detection in sequential matching.
-*   `--loop_period`: (Optional) COLMAP loop detection period (default: `5`).
-*   `--loop_num_images`: (Optional) COLMAP loop detection number of images (default: `50`).
-*   `--vocab_tree_path`: (Optional) Path to vocabulary tree for loop detection (default: `vocab_tree_faiss_flickr100K_words32K.bin`).
-*   `--extra_fe`: (Optional) Extra arguments for feature extraction stage. Accepts a JSON string or a path to a `.json` file.
-*   `--extra_sm`: (Optional) Extra arguments for sequential matching stage. Accepts a JSON string or a path to a `.json` file.
-*   `--extra_ma`: (Optional) Extra arguments for mapping stage. Accepts a JSON string or a path to a `.json` file.
+### Arguments
 
-#### Example using a JSON file:
+| Argument | Default | Description |
+|---|---|---|
+| `input_videos_dir` | — | Directory containing source video files (`.mp4`, `.mov`, …) |
+| `output_dir` | — | Directory for all output data |
+| `--scale` | `0.5` | Image scaling factor applied before processing |
+| `--overlap` | `12` | Sequential matching overlap (number of frames) |
+| `--skip-houdini` | off | Skip Houdini `.hip` generation |
+| `--hfs` | — | Path to Houdini installation directory (e.g. `C:\Program Files\Side Effects Software\Houdini 20.0.625`). If omitted, `hython` must be in `PATH`. |
+| `--multi-cams` | off | Treat each video as a separate camera (useful for multi-device shoots) |
+| `--acescg` | off | Convert input from ACEScg to sRGB before processing |
+| `--lut` | — | Path to a `.cube` LUT file for colour-space conversion |
+| `--mask` | — | Path to a directory containing per-frame masks |
+| `--focal_length_mm` | — | Lens focal length in mm (e.g. `24`). Locks COLMAP to this value instead of estimating it. |
+| `--sensor_width_mm` | `36.0` | Physical sensor width in mm. Used together with `--focal_length_mm`. Common values: full-frame=36.0, ARRI LF=36.7, Super35=24.89, MFT=17.3 |
+| `--camera_model` | auto | COLMAP camera model (e.g. `OPENCV`, `PINHOLE`, `SIMPLE_RADIAL`) |
+| `--loop` | off | Enable loop detection in sequential matching |
+| `--loop_period` | `5` | Loop detection period |
+| `--loop_num_images` | `50` | Number of images considered per loop detection pass |
+| `--vocab_tree_path` | `vocab_tree_faiss_flickr100K_words32K.bin` | Path to vocabulary tree for loop detection |
+| `--extra_fe` | — | Extra COLMAP feature-extraction arguments. Accepts a JSON string or `.json` file path. |
+| `--extra_sm` | — | Extra COLMAP sequential-matching arguments. |
+| `--extra_ma` | — | Extra COLMAP global-mapper arguments. |
 
-1. Create a `params.json`:
+### Specifying Focal Length
+
+When the shooting focal length is known, providing it improves reconstruction accuracy by preventing COLMAP from freely estimating it:
+
+```bash
+python run_autotracker.py ./videos ./output --focal_length_mm 24 --sensor_width_mm 36
+```
+
+### Extra Arguments Example
+
+Create a `params.json`:
 ```json
 {
     "SiftExtraction.peak_threshold": 0.01,
@@ -70,76 +78,88 @@ python run_autotracker.py <input_videos_dir> <output_dir> --scale <scale_factor>
 }
 ```
 
-2. Run the tracker:
+Then pass it:
 ```bash
 python run_autotracker.py ./in ./out --extra_fe params.json
 ```
 
-### Masking Support
+### Masking
 
-The pipeline supports automatic detection of image masks for reconstruction (e.g., for moving objects or water).
+The pipeline supports per-frame masks to exclude moving objects or unwanted regions from reconstruction.
 
-**Masking Rules:**
-1.  **Auto-Detection:** For a video file named `shot01.mp4`, the script automatically looks for a **sibling directory** named `shot01_mask` (located alongside the video file).
-2.  **Custom Root:** If `--mask <path>` is provided, the script will look for `<video_name>_mask` inside that specified path.
-3.  **Filename Format:** 
-    *   Masks must be PNG files.
-    *   The script expects filenames to be `frame_000001.jpg.png` (matching the extracted frames).
-    *   **Auto-Formatting:** If the script finds `frame_000001.png`, it will automatically rename it to `frame_000001.jpg.png` to comply with COLMAP requirements.
+**Rules:**
+1. **Auto-detection:** For a video `shot01.mp4`, the script looks for a sibling directory named `shot01_mask`.
+2. **Custom root:** `--mask <path>` looks for `<video_name>_mask` inside the specified path.
+3. **Filename format:** PNG files named `frame_000001.jpg.png`. If `frame_000001.png` is found it is automatically renamed to match COLMAP requirements.
 
 ### Example
 
 ```bash
-python run_autotracker.py ./videos ./output --scale 0.5 --hfs "C:/Program Files/Side Effects Software/Houdini 20.0.625"
+python run_autotracker.py ./videos ./output \
+    --scale 0.5 \
+    --focal_length_mm 20 \
+    --sensor_width_mm 36 \
+    --hfs "C:/Program Files/Side Effects Software/Houdini 20.0.625"
 ```
 
-## Batch Processing with Configuration
+## Batch Processing
 
-You can use `batch_run.py` to process multiple folders within a target directory. To customize parameters for specific folders, you can place a `batch_config.ini` file in the target directory.
+`batch_run.py` processes multiple folders within a target directory. Per-folder settings can be defined in a `batch_config.ini` placed in the target directory.
 
 ### Usage
+
 ```bash
 python batch_run.py <target_directory>
 ```
 
-### Configuration Format (batch_config.ini)
-If a folder name matches a section name in the INI file, the specified settings will override the defaults.
+### Configuration Format (`batch_config.ini`)
+
+If a section name matches a folder name, its settings override the defaults for that folder.
 
 ```ini
+[global]
+scale = 0.5
+hfs = C:/Program Files/Side Effects Software/Houdini 20.0.625
+
 [shot_01]
 scale = 0.8
 camera_model = OPENCV
-overlap = 16
-skip_houdini = true
+focal_length_mm = 24
+sensor_width_mm = 36
 
 [shot_02]
-mapper = colmap
+focal_length_mm = 20
+sensor_width_mm = 24.89
 acescg = true
 ```
 
 **Supported INI Keys:**
-*   `scale`: Image scaling factor (float)
-*   `overlap`: Sequential matching overlap (int)
-*   `mapper`: `glomap` or `colmap`
-*   `camera_model`: e.g., `OPENCV`, `PINHOLE`
-*   `mask`: Path to mask directory
-*   `lut`: Path to `.cube` file
-*   `hfs`: Path to Houdini installation
-*   `multi_cams`: `true` or `false`
-*   `acescg`: `true` or `false`
-*   `skip_houdini`: `true` or `false`
-*   `loop`: `true` or `false`
-*   `loop_period`: Loop detection period (int)
-*   `loop_num_images`: Number of images for loop detection (int)
-*   `vocab_tree_path`: Path to vocabulary tree (string)
+
+| Key | Type | Description |
+|---|---|---|
+| `scale` | float | Image scaling factor |
+| `overlap` | int | Sequential matching overlap |
+| `camera_model` | string | e.g. `OPENCV`, `PINHOLE` |
+| `focal_length_mm` | float | Lens focal length in mm |
+| `sensor_width_mm` | float | Physical sensor width in mm |
+| `mask` | string | Path to mask directory |
+| `lut` | string | Path to `.cube` LUT file |
+| `hfs` | string | Path to Houdini installation |
+| `multi_cams` | bool | `true` / `false` |
+| `acescg` | bool | `true` / `false` |
+| `skip_houdini` | bool | `true` / `false` |
+| `loop` | bool | `true` / `false` |
+| `loop_period` | int | Loop detection period |
+| `loop_num_images` | int | Images per loop detection pass |
+| `vocab_tree_path` | string | Path to vocabulary tree |
 
 ### Advanced Parameter Injection (INI Only)
 
-You can pass any COLMAP internal parameter by using specific prefixes in the `batch_config.ini` file. These will be automatically injected into the corresponding processing stage:
+Pass any COLMAP internal parameter using these prefixes:
 
-*   `fe.<Parameter>`: Injected into `feature_extractor`
-*   `sm.<Parameter>`: Injected into `sequential_matcher`
-*   `ma.<Parameter>`: Injected into `mapper` (or `global_mapper`)
+- `fe.<Parameter>` — injected into `feature_extractor`
+- `sm.<Parameter>` — injected into `sequential_matcher`
+- `ma.<Parameter>` — injected into `global_mapper`
 
 **Example:**
 ```ini
@@ -150,54 +170,54 @@ sm.SequentialMatching.min_num_matches = 20
 
 ## Quick Start / Demo
 
-A batch script `run_demo_test.bat` is included to easily test the pipeline using the provided demo data.
-
 ```bash
 run_demo_test.bat
 ```
 
-This script will:
-1.  Process the data in `./demo-test/walking-forest`
-2.  Output results to `./demo-test/walking-forest-output`
-3.  Attempt to generate a Houdini scene (you may need to edit the `.bat` file to point to your specific Houdini installation or use flags if `hython` is not in your PATH).
-
-You can verify the installation and dependencies by running this demo.
+Processes `./demo-test/walking-forest` and outputs to `./demo-test/walking-forest-output`. Edit the `.bat` file to point to your Houdini installation if `hython` is not in `PATH`.
 
 ## Pipeline Steps
 
-1.  **Initialization**: The script checks/creates directories.
-2.  **Tracking (`autotracker.py`)**:
-    *   Extracts frames from videos.
-    *   Runs COLMAP feature extraction and matching.
-    *   Runs **GLOMAP** (standalone) or **COLMAP Global Mapper** (requires COLMAP >= 3.14) for reconstruction.
-    *   Exports the model to TXT format.
-3.  **Conversion**: Converts the sparse model to PLY format.
-4.  **NeRF Prep**: Runs `colmap2nerf.py` to generate `transforms.json`.
-5.  **Undistortion**: Runs `undistortionNerfstudioColmap.py` to correct lens distortion.
-6.  **Houdini Scene**: Runs `build_houdini_scene.py` to import the data into a Houdini file.
+1. **Frame extraction** — FFmpeg extracts frames from each input video.
+2. **Feature extraction & matching** — COLMAP `feature_extractor` + `sequential_matcher`.
+3. **Sparse reconstruction** — COLMAP `global_mapper` (requires COLMAP 4.0+).
+4. **Model export** — Sparse model converted to TXT and PLY formats.
+5. **NeRF conversion** — `colmap2nerf.py` generates `transforms.json`.
+6. **Undistortion** — `undistortionNerfstudioColmap.py` removes lens distortion.
+   - Default: canvas is expanded to include all valid pixels; `sensor_w`/`sensor_h` are recorded so downstream tools can recover the physical focal length.
+   - `--crop`: keeps the original canvas size; Houdini focal length and aperture remain at their exact physical values (e.g. 20 mm / 36 mm).
+7. **Houdini scene** — `build_houdini_scene.py` imports the point cloud and creates an animated camera with correct focal length, aperture, and principal-point offset.
 
 ## Scripts Overview
 
-*   `run_autotracker.py`: The master script that orchestrates the entire pipeline.
-*   `autotracker.py`: Handles the core photogrammetry tasks (FFmpeg, COLMAP, GLOMAP).
-*   `colmap2nerf.py`: Converts COLMAP data to the standard NeRF `transforms.json` format.
-*   `undistortionNerfstudioColmap.py`: Handles image undistortion based on the calculated camera models.
-*   `restore_distortion.py`: A utility script to restore (undistort) or reverse (distort) images based on calibration JSON. Supports EXR processing via `--exr`.
-*   `build_houdini_scene.py`: Generates a `.hip` file with the point cloud and cameras loaded.
+| Script | Description |
+|---|---|
+| `run_autotracker.py` | Master script — orchestrates the full pipeline |
+| `autotracker.py` | Core photogrammetry: FFmpeg, COLMAP feature extraction, matching, and Global Mapper |
+| `colmap2nerf.py` | Converts COLMAP sparse model to `transforms.json` |
+| `undistortionNerfstudioColmap.py` | Undistorts images; expands canvas or crops to original size |
+| `restore_distortion.py` | Utility to apply or remove lens distortion from rendered images. Supports EXR via `--exr` |
+| `build_houdini_scene.py` | Generates a `.hip` file with point cloud and animated camera |
+| `batch_run.py` | Batch runner with per-folder INI configuration |
 
 ## Output Structure
 
-For each video processed, a folder is created in the output directory containing:
+For each processed video:
 
-*   `images/`: Extracted frames.
-*   `sparse/`: COLMAP/GLOMAP sparse reconstruction data.
-*   `database.db`: COLMAP database.
-*   `transforms.json`: Camera poses in NeRF format.
-*   `points3D.ply`: Point cloud file.
-*   `undistort/`: Undistorted images and transforms.
-*   `<project_name>.hip`: Houdini project file.
+```
+<output_dir>/<video_name>/
+├── images/                  # Extracted frames
+├── sparse/                  # COLMAP sparse reconstruction
+├── database.db              # COLMAP feature database
+├── transforms.json          # Camera poses (NeRF format)
+├── points3D.ply             # Point cloud
+├── undistort/
+│   ├── images_undistorted/  # Undistorted frames
+│   └── transforms_undistorted.json
+└── <video_name>.hip         # Houdini project file
+```
 
 ## References
 
-*   This project was inspired by and references: [Video Link](https://youtu.be/xx85eyN1Xc0?si=icXcANMb06k-v9dE)
-*   Demo test video source: [Pexels - Tranquil Autumn Forest Walkway Path](https://www.pexels.com/video/tranquil-autumn-forest-walkway-path-29142343/)
+- Inspired by: [Video Link](https://youtu.be/xx85eyN1Xc0?si=icXcANMb06k-v9dE)
+- Demo test video: [Pexels — Tranquil Autumn Forest Walkway Path](https://www.pexels.com/video/tranquil-autumn-forest-walkway-path-29142343/)
