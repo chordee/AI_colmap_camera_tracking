@@ -22,7 +22,7 @@ def run_command(cmd, error_msg, quiet=False):
             kwargs['stderr'] = subprocess.DEVNULL
         
         # Run command
-        print(f"DEBUG: Running command: {' '.join(cmd)}")
+        # print(f"DEBUG: Running command: {' '.join(cmd)}")
         subprocess.run(cmd, check=True, **kwargs)
         return True
     except subprocess.CalledProcessError:
