@@ -22,7 +22,7 @@ def run_command(cmd, error_msg, quiet=False):
             kwargs['stderr'] = subprocess.DEVNULL
         
         # Run command
-        # print(f"DEBUG: Running command: {' '.join(cmd)}")
+        print(f"DEBUG: Running command: {' '.join(cmd)}")
         subprocess.run(cmd, check=True, **kwargs)
         return True
     except subprocess.CalledProcessError:
@@ -33,26 +33,45 @@ def run_command(cmd, error_msg, quiet=False):
         print(error_msg)
         return False
 
-def _patch_cameras_txt_focal_length(cameras_txt_path, fl_px):
-    """Overwrite focal length in a COLMAP cameras.txt with the specified value."""
-    SINGLE_F_MODELS = {"SIMPLE_PINHOLE", "SIMPLE_RADIAL", "RADIAL", "SIMPLE_RADIAL_FISHEYE", "RADIAL_FISHEYE"}
-    lines = []
-    with open(cameras_txt_path, 'r') as f:
-        for line in f:
-            stripped = line.strip()
-            if stripped.startswith('#') or not stripped:
-                lines.append(line)
-                continue
-            tokens = stripped.split()
-            model = tokens[1].upper()
-            if model in SINGLE_F_MODELS:
-                tokens[4] = str(fl_px)
-            else:  # fx, fy models (OPENCV, PINHOLE, etc.)
-                tokens[4] = str(fl_px)
-                tokens[5] = str(fl_px)
-            lines.append(' '.join(tokens) + '\n')
-    with open(cameras_txt_path, 'w') as f:
-        f.writelines(lines)
+def _patch_cameras_bin_focal_length(cameras_bin_path, fl_px):
+    """Overwrite focal length in a COLMAP cameras.bin with the specified value."""
+    import struct
+    # model_id -> (num_params, single_f)
+    # single_f=True: only params[0] is focal length
+    # single_f=False: params[0]=fx, params[1]=fy
+    MODEL_PARAMS = {
+        0:  (3,  True),   # SIMPLE_PINHOLE
+        1:  (4,  False),  # PINHOLE
+        2:  (4,  True),   # SIMPLE_RADIAL
+        3:  (5,  True),   # RADIAL
+        4:  (8,  False),  # OPENCV
+        5:  (8,  False),  # OPENCV_FISHEYE
+        6:  (12, False),  # FULL_OPENCV
+        7:  (5,  False),  # FOV
+        8:  (4,  True),   # SIMPLE_RADIAL_FISHEYE
+        9:  (5,  True),   # RADIAL_FISHEYE
+        10: (12, False),  # THIN_PRISM_FISHEYE
+    }
+    with open(cameras_bin_path, 'rb') as f:
+        data = bytearray(f.read())
+    offset = 0
+    num_cameras = struct.unpack_from('<Q', data, offset)[0]
+    offset += 8
+    for _ in range(num_cameras):
+        offset += 4  # camera_id: uint32
+        model_id = struct.unpack_from('<i', data, offset)[0]
+        offset += 4  # model_id: int32
+        offset += 8  # width: uint64
+        offset += 8  # height: uint64
+        if model_id not in MODEL_PARAMS:
+            raise ValueError(f"Unknown COLMAP camera model_id: {model_id}")
+        num_params, single_f = MODEL_PARAMS[model_id]
+        struct.pack_into('<d', data, offset, fl_px)       # fx or f
+        if not single_f:
+            struct.pack_into('<d', data, offset + 8, fl_px)  # fy
+        offset += num_params * 8
+    with open(cameras_bin_path, 'wb') as f:
+        f.write(data)
 
 
 def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mask_path=None, multi_cams=False, acescg=False, lut_path=None, mapper="glomap", camera_model=None, loop=False, loop_period=5, loop_num_images=50, vocab_tree_path=None, extra_fe=None, extra_sm=None, extra_ma=None, focal_length_mm=None, sensor_width_mm=36.0):
@@ -252,10 +271,7 @@ def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mas
     if camera_model:
         cmd_colmap_fe.extend(["--ImageReader.camera_model", camera_model])
 
-    if mapper == "colmap":
-        cmd_colmap_fe.extend(["--FeatureExtraction.use_gpu", "1"])
-    else:
-        cmd_colmap_fe.extend(["--SiftExtraction.use_gpu", "1"])
+    cmd_colmap_fe.extend(["--FeatureExtraction.use_gpu", "1"])
     
     if multi_cams:
         cmd_colmap_fe.extend(["--ImageReader.single_camera_per_folder", "1"])
@@ -325,6 +341,32 @@ def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mas
     if not run_command(cmd_mapper, fail_msg):
         return
 
+    # Re-run bundle adjustment with focal length fixed to the user-specified value.
+    # The mapper's BA may still refine the focal length despite the flag, so we:
+    # 1. Patch cameras.bin to reset focal length to fl_px
+    # 2. Re-run colmap bundle_adjuster with refine_focal_length=0
+    # This ensures intrinsics and extrinsics remain consistent.
+    if fl_px is not None:
+        cameras_bin = os.path.join(sparse_dir, "0", "cameras.bin")
+        if os.path.exists(cameras_bin):
+            try:
+                _patch_cameras_bin_focal_length(cameras_bin, fl_px)
+                print(f"        • Patched cameras.bin → focal length reset to {fl_px:.1f}px")
+            except Exception as e:
+                print(f"        [WARN] Could not patch cameras.bin: {e}")
+            else:
+                sparse_0_dir_ba = os.path.join(sparse_dir, "0")
+                cmd_ba = [
+                    COLMAP, "bundle_adjuster",
+                    "--input_path", sparse_0_dir_ba,
+                    "--output_path", sparse_0_dir_ba,
+                    "--BundleAdjustment.refine_focal_length", "0",
+                ]
+                if not run_command(cmd_ba, "        [WARN] bundle_adjuster (fixed focal) failed — continuing without re-BA"):
+                    pass  # Non-fatal: TXT export still proceeds with patched cameras.bin
+        else:
+            print(f"        [WARN] cameras.bin not found at {cameras_bin} — skipping focal length patch.")
+
     # Export TXT inside the model folder
     # Keep TXT next to BIN so Blender can import from sparse\0 directly.
     sparse_0_dir = os.path.join(sparse_dir, "0")
@@ -345,21 +387,6 @@ def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mas
             "--output_type", "TXT"
         ]
         run_command(cmd_convert_2, "        [WARN] Failed to export TXT to sparse/", quiet=True)
-
-        # Patch cameras.txt to enforce the specified focal length.
-        # GlobalMapper.ba_refine_focal_length=0 may not prevent all BA passes
-        # from refining, so we overwrite the final TXT directly.
-        if fl_px is not None:
-            for cameras_txt in [
-                os.path.join(sparse_0_dir, "cameras.txt"),
-                os.path.join(sparse_dir, "cameras.txt"),
-            ]:
-                if os.path.exists(cameras_txt):
-                    try:
-                        _patch_cameras_txt_focal_length(cameras_txt, fl_px)
-                        print(f"        • Patched focal length → {fl_px:.1f}px in {os.path.relpath(cameras_txt, scene_path)}")
-                    except Exception as e:
-                        print(f"        [WARN] Could not patch {cameras_txt}: {e}")
 
     print(f"        ✓ Finished \"{base_name}\"  ({idx}/{total})")
 
