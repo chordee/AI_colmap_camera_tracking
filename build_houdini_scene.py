@@ -38,17 +38,38 @@ def create_animated_camera(json_path, global_scale=1, cam_name="Nerfstudio_Anima
     # Read resolution and focal length
     img_w = float(data.get("w", 1920))
     img_h = float(data.get("h", 1080))
-    fl_x = float(data.get("fl_x", 1000)) # Focal Length in Pixels
+    fl_x  = float(data.get("fl_x", 1000))  # Focal length in pixels
+    cx    = float(data.get("cx", img_w / 2))
+    cy    = float(data.get("cy", img_h / 2))
 
-    # Convert to Houdini Focal Length (mm)
-    focal_mm = (fl_x / img_w) * aperture_width
+    # sensor_w/sensor_h: original sensor dimensions before canvas expansion.
+    # Written by undistortionNerfstudioColmap.py when the undistorted canvas is
+    # larger than the original image.  Falls back to img_w/img_h for older JSON
+    # files (where no expansion occurred).
+    sensor_w = float(data.get("sensor_w", img_w))
+
+    # Physical focal length — must be derived from the original sensor width,
+    # not the (potentially expanded) canvas width, so the mm value is stable.
+    focal_mm = (fl_x / sensor_w) * aperture_width
+
+    # Scale aperture to match the expanded canvas so that Houdini's
+    # focal/aperture ratio correctly represents the wider field of view.
+    # When sensor_w == img_w (no expansion), aperture_effective == aperture_width.
+    aperture_effective = aperture_width * (img_w / sensor_w)
+
+    # Principal-point offset expressed as a fraction of the canvas width.
+    # Houdini winx/winy shift the projection window; 0 = centred.
+    # winx > 0 → window centre moves left  (principal point left of centre)
+    # winy > 0 → window centre moves up    (principal point above centre)
+    winx = (img_w / 2 - cx) / img_w
+    winy = (img_h / 2 - cy) / img_w   # note: divided by img_w, same unit as winx
 
     # 3. Create Houdini nodes
     obj = hou.node("/obj")
     subnet = obj.node("NeRF_Import")
     if not subnet:
         subnet = obj.createNode("subnet", "NeRF_Import")
-    
+
     # Create camera (destroy and recreate if it already exists)
     cam = subnet.node(cam_name)
     if cam:
@@ -60,8 +81,10 @@ def create_animated_camera(json_path, global_scale=1, cam_name="Nerfstudio_Anima
     # Set static camera parameters
     cam.parm("resx").set(img_w)
     cam.parm("resy").set(img_h)
-    cam.parm("aperture").set(aperture_width)
+    cam.parm("aperture").set(aperture_effective)
     cam.parm("focal").set(focal_mm)
+    cam.parm("winx").set(winx)
+    cam.parm("winy").set(winy)
     cam.parm("iconscale").set(0.5)
 
     # Set background image for viewport
