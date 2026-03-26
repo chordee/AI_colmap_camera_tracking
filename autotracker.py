@@ -5,6 +5,8 @@ import glob
 import argparse
 import json
 import cv2
+import piexif
+from tqdm import tqdm
 
 # System Binaries (Ensure these are in your PATH)
 FFMPEG = "ffmpeg"
@@ -146,6 +148,21 @@ def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mas
     if not all_images:
         print(f"        × No frames extracted – skipping \"{base_name}\".")
         return
+
+    # Write focal length to EXIF of all extracted frames
+    if focal_length_mm:
+        fl_35mm = round(focal_length_mm * 36.0 / sensor_width_mm)
+        fl_rational = (round(focal_length_mm * 100), 100)
+        exif_dict = {"Exif": {
+            piexif.ExifIFD.FocalLength: fl_rational,
+            piexif.ExifIFD.FocalLengthIn35mmFilm: fl_35mm,
+        }}
+        exif_bytes = piexif.dump(exif_dict)
+        for img_path in tqdm(all_images, desc="        Writing EXIF focal length", unit="frame"):
+            try:
+                piexif.insert(exif_bytes, img_path)
+            except Exception as e:
+                print(f"        [WARN] Could not write EXIF to {os.path.basename(img_path)}: {e}")
 
     # Inject focal length as camera_params if specified
     if focal_length_mm and not (extra_fe and "ImageReader.camera_params" in extra_fe):
