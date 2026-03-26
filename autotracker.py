@@ -202,7 +202,7 @@ def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mas
             if extra_ma is None:
                 extra_ma = {}
             if mapper == "colmap":
-                extra_ma.setdefault("Mapper.ba_refine_focal_length", "0")
+                extra_ma.setdefault("GlobalMapper.ba_refine_focal_length", "0")
             else:
                 extra_ma.setdefault("BundleAdjustment.refine_focal_length", "0")
         else:
