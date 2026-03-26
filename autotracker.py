@@ -11,7 +11,6 @@ from tqdm import tqdm
 # System Binaries (Ensure these are in your PATH)
 FFMPEG = "ffmpeg"
 COLMAP = "colmap"
-GLOMAP = "glomap"
 
 def run_command(cmd, error_msg, quiet=False):
     """Runs a subprocess command. Returns True on success, False on failure."""
@@ -74,7 +73,7 @@ def _patch_cameras_bin_focal_length(cameras_bin_path, fl_px):
         f.write(data)
 
 
-def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mask_path=None, multi_cams=False, acescg=False, lut_path=None, mapper="glomap", camera_model=None, loop=False, loop_period=5, loop_num_images=50, vocab_tree_path=None, extra_fe=None, extra_sm=None, extra_ma=None, focal_length_mm=None, sensor_width_mm=36.0):
+def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mask_path=None, multi_cams=False, acescg=False, lut_path=None, camera_model=None, loop=False, loop_period=5, loop_num_images=50, vocab_tree_path=None, extra_fe=None, extra_sm=None, extra_ma=None, focal_length_mm=None, sensor_width_mm=36.0):
     # Get base name and extension
     base_name = os.path.splitext(os.path.basename(video_path))[0]
     ext = os.path.splitext(video_path)[1]
@@ -248,10 +247,7 @@ def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mas
         # Attempt to prevent bundle adjustment from refining the focal length
         if extra_ma is None:
             extra_ma = {}
-        if mapper == "colmap":
-            extra_ma.setdefault("GlobalMapper.ba_refine_focal_length", "0")
-        else:
-            extra_ma.setdefault("BundleAdjustment.refine_focal_length", "0")
+        extra_ma.setdefault("GlobalMapper.ba_refine_focal_length", "0")
 
     # Optional: Check mask count consistency
     if final_mask_path:
@@ -314,24 +310,14 @@ def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mas
         return
 
     # 4) Sparse reconstruction
-    if mapper == "colmap":
-        print("        [4/4] COLMAP global mapper ...")
-        cmd_mapper = [
-            COLMAP, "global_mapper",
-            "--database_path", database_path,
-            "--image_path", img_dir,
-            "--output_path", sparse_dir
-        ]
-        fail_msg = f"        × colmap global_mapper failed – skipping \"{base_name}\"."
-    else:
-        print("        [4/4] GLOMAP mapper ...")
-        cmd_mapper = [
-            GLOMAP, "mapper",
-            "--database_path", database_path,
-            "--image_path", img_dir,
-            "--output_path", sparse_dir
-        ]
-        fail_msg = f"        × glomap mapper failed – skipping \"{base_name}\"."
+    print("        [4/4] COLMAP global mapper ...")
+    cmd_mapper = [
+        COLMAP, "global_mapper",
+        "--database_path", database_path,
+        "--image_path", img_dir,
+        "--output_path", sparse_dir
+    ]
+    fail_msg = f"        × colmap global_mapper failed – skipping \"{base_name}\"."
 
     # Inject extra mapper args
     if extra_ma:
@@ -400,7 +386,6 @@ def main():
     parser.add_argument("--multi-cams", action="store_true", help="Allow processing multiple videos with different camera settings")
     parser.add_argument("--acescg", action="store_true", help="Convert input ACEScg colorspace to sRGB")
     parser.add_argument("--lut", help="Path to .cube LUT file for color conversion (optional)")
-    parser.add_argument("--mapper", choices=["glomap", "colmap"], default="glomap", help="Choose mapper: glomap (standalone) or colmap (integrated GLOMAP, requires COLMAP >= 3.14). Default: glomap")
     parser.add_argument("--camera_model", help="Specify COLMAP camera model (e.g., OPENCV, PINHOLE, SIMPLE_RADIAL). Default: Auto (COLMAP decides)")
     parser.add_argument("--loop", action="store_true", help="Enable COLMAP loop detection in sequential matching")
     parser.add_argument("--loop_period", type=int, default=5, help="COLMAP loop detection period (default: 5)")
@@ -488,7 +473,7 @@ def main():
             multi_cams=args.multi_cams,
             acescg=args.acescg,
             lut_path=lut_path,
-            mapper=args.mapper,
+
             camera_model=args.camera_model,
             loop=args.loop,
             loop_period=args.loop_period,

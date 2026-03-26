@@ -12,7 +12,6 @@ def main():
     # Sync arguments with run_autotracker.py
     parser.add_argument("--scale", type=float, help="Default scale argument")
     parser.add_argument("--overlap", type=int, help="Default sequential matching overlap")
-    parser.add_argument("--mapper", choices=["glomap", "colmap"], help="Default mapper")
     parser.add_argument("--camera_model", help="Default COLMAP camera model")
     parser.add_argument("--mask", help="Default mask directory root")
     parser.add_argument("--lut", help="Default path to .cube LUT file")
@@ -92,9 +91,6 @@ def main():
             
             s_overlap = get_setting('overlap', args.overlap)
             if s_overlap: cmd.extend(['--overlap', str(s_overlap)])
-            
-            s_mapper = get_setting('mapper', args.mapper)
-            if s_mapper: cmd.extend(['--mapper', s_mapper])
             
             s_cam = get_setting('camera_model', args.camera_model)
             if s_cam: cmd.extend(['--camera_model', s_cam])

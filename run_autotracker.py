@@ -16,7 +16,6 @@ def main():
     parser.add_argument("--acescg", action="store_true", help="Convert input ACEScg colorspace to sRGB")
     parser.add_argument("--lut", help="Path to .cube LUT file for color conversion (optional)")
     parser.add_argument("--mask", help="Path to mask directory root (optional)")
-    parser.add_argument("--mapper", choices=["glomap", "colmap"], default="glomap", help="Choose mapper: glomap (standalone) or colmap (integrated Global Mapper). Default: glomap")
     parser.add_argument("--camera_model", help="Specify COLMAP camera model (e.g., OPENCV, PINHOLE, SIMPLE_RADIAL). Default: Auto (COLMAP decides)")
     parser.add_argument("--loop", action="store_true", help="Enable COLMAP loop detection in sequential matching")
     parser.add_argument("--loop_period", type=int, default=5, help="COLMAP loop detection period (default: 5)")
@@ -57,8 +56,6 @@ def main():
         cmd1.extend(["--lut", args.lut])
     if args.mask:
         cmd1.extend(["--mask", args.mask])
-    if args.mapper:
-        cmd1.extend(["--mapper", args.mapper])
     if args.camera_model:
         cmd1.extend(["--camera_model", args.camera_model])
     if args.loop:
