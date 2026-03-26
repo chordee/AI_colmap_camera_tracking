@@ -22,7 +22,7 @@ def run_command(cmd, error_msg, quiet=False):
             kwargs['stderr'] = subprocess.DEVNULL
         
         # Run command
-        # print(f"DEBUG: Running command: {' '.join(cmd)}")
+        print(f"DEBUG: Running command: {' '.join(cmd)}")
         subprocess.run(cmd, check=True, **kwargs)
         return True
     except subprocess.CalledProcessError:
@@ -32,6 +32,28 @@ def run_command(cmd, error_msg, quiet=False):
         print(f"        [ERROR] Binary not found: {cmd[0]}")
         print(error_msg)
         return False
+
+def _patch_cameras_txt_focal_length(cameras_txt_path, fl_px):
+    """Overwrite focal length in a COLMAP cameras.txt with the specified value."""
+    SINGLE_F_MODELS = {"SIMPLE_PINHOLE", "SIMPLE_RADIAL", "RADIAL", "SIMPLE_RADIAL_FISHEYE", "RADIAL_FISHEYE"}
+    lines = []
+    with open(cameras_txt_path, 'r') as f:
+        for line in f:
+            stripped = line.strip()
+            if stripped.startswith('#') or not stripped:
+                lines.append(line)
+                continue
+            tokens = stripped.split()
+            model = tokens[1].upper()
+            if model in SINGLE_F_MODELS:
+                tokens[4] = str(fl_px)
+            else:  # fx, fy models (OPENCV, PINHOLE, etc.)
+                tokens[4] = str(fl_px)
+                tokens[5] = str(fl_px)
+            lines.append(' '.join(tokens) + '\n')
+    with open(cameras_txt_path, 'w') as f:
+        f.writelines(lines)
+
 
 def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mask_path=None, multi_cams=False, acescg=False, lut_path=None, mapper="glomap", camera_model=None, loop=False, loop_period=5, loop_num_images=50, vocab_tree_path=None, extra_fe=None, extra_sm=None, extra_ma=None, focal_length_mm=None, sensor_width_mm=36.0):
     # Get base name and extension
@@ -149,6 +171,16 @@ def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mas
         print(f"        × No frames extracted – skipping \"{base_name}\".")
         return
 
+    # Compute pixel focal length (used for EXIF, camera_params, and post-BA patching)
+    fl_px = None
+    if focal_length_mm:
+        first_img = cv2.imread(all_images[0])
+        if first_img is not None:
+            real_h, real_w = first_img.shape[:2]
+            fl_px = (focal_length_mm / sensor_width_mm) * real_w
+        else:
+            print(f"        [WARN] Could not read first frame to compute focal length in pixels.")
+
     # Write focal length to EXIF of all extracted frames
     if focal_length_mm:
         fl_35mm = round(focal_length_mm * 36.0 / sensor_width_mm)
@@ -165,48 +197,42 @@ def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mas
                 print(f"        [WARN] Could not write EXIF to {os.path.basename(img_path)}: {e}")
 
     # Inject focal length as camera_params if specified
-    if focal_length_mm and not (extra_fe and "ImageReader.camera_params" in extra_fe):
-        first_img = cv2.imread(all_images[0])
-        if first_img is not None:
-            real_h, real_w = first_img.shape[:2]
-            fl_px = (focal_length_mm / sensor_width_mm) * real_w
-            cx = real_w / 2.0
-            cy = real_h / 2.0
+    if fl_px is not None and not (extra_fe and "ImageReader.camera_params" in extra_fe):
+        cx = real_w / 2.0
+        cy = real_h / 2.0
 
-            model = camera_model or "OPENCV"
-            model_upper = model.upper()
-            if model_upper in ("SIMPLE_PINHOLE", "SIMPLE_RADIAL_FISHEYE"):
-                params_str = f"{fl_px},{cx},{cy}"
-                if model_upper == "SIMPLE_RADIAL_FISHEYE":
-                    params_str += ",0"
-            elif model_upper in ("PINHOLE",):
-                params_str = f"{fl_px},{fl_px},{cx},{cy}"
-            elif model_upper == "SIMPLE_RADIAL":
-                params_str = f"{fl_px},{cx},{cy},0"
-            elif model_upper == "RADIAL":
-                params_str = f"{fl_px},{cx},{cy},0,0"
-            else:
-                # OPENCV, OPENCV_FISHEYE, and others default to 8-param format
-                params_str = f"{fl_px},{fl_px},{cx},{cy},0,0,0,0"
-
-            print(f"        • Focal length: {focal_length_mm}mm / {sensor_width_mm}mm sensor → {fl_px:.1f}px  (camera_params: {params_str})")
-
-            if not camera_model:
-                camera_model = "OPENCV"
-
-            if extra_fe is None:
-                extra_fe = {}
-            extra_fe["ImageReader.camera_params"] = params_str
-
-            # Prevent bundle adjustment from refining the focal length
-            if extra_ma is None:
-                extra_ma = {}
-            if mapper == "colmap":
-                extra_ma.setdefault("GlobalMapper.ba_refine_focal_length", "0")
-            else:
-                extra_ma.setdefault("BundleAdjustment.refine_focal_length", "0")
+        model = camera_model or "OPENCV"
+        model_upper = model.upper()
+        if model_upper in ("SIMPLE_PINHOLE", "SIMPLE_RADIAL_FISHEYE"):
+            params_str = f"{fl_px},{cx},{cy}"
+            if model_upper == "SIMPLE_RADIAL_FISHEYE":
+                params_str += ",0"
+        elif model_upper in ("PINHOLE",):
+            params_str = f"{fl_px},{fl_px},{cx},{cy}"
+        elif model_upper == "SIMPLE_RADIAL":
+            params_str = f"{fl_px},{cx},{cy},0"
+        elif model_upper == "RADIAL":
+            params_str = f"{fl_px},{cx},{cy},0,0"
         else:
-            print(f"        [WARN] Could not read first frame to compute focal length in pixels.")
+            # OPENCV, OPENCV_FISHEYE, and others default to 8-param format
+            params_str = f"{fl_px},{fl_px},{cx},{cy},0,0,0,0"
+
+        print(f"        • Focal length: {focal_length_mm}mm / {sensor_width_mm}mm sensor → {fl_px:.1f}px  (camera_params: {params_str})")
+
+        if not camera_model:
+            camera_model = "OPENCV"
+
+        if extra_fe is None:
+            extra_fe = {}
+        extra_fe["ImageReader.camera_params"] = params_str
+
+        # Attempt to prevent bundle adjustment from refining the focal length
+        if extra_ma is None:
+            extra_ma = {}
+        if mapper == "colmap":
+            extra_ma.setdefault("GlobalMapper.ba_refine_focal_length", "0")
+        else:
+            extra_ma.setdefault("BundleAdjustment.refine_focal_length", "0")
 
     # Optional: Check mask count consistency
     if final_mask_path:
@@ -319,6 +345,21 @@ def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mas
             "--output_type", "TXT"
         ]
         run_command(cmd_convert_2, "        [WARN] Failed to export TXT to sparse/", quiet=True)
+
+        # Patch cameras.txt to enforce the specified focal length.
+        # GlobalMapper.ba_refine_focal_length=0 may not prevent all BA passes
+        # from refining, so we overwrite the final TXT directly.
+        if fl_px is not None:
+            for cameras_txt in [
+                os.path.join(sparse_0_dir, "cameras.txt"),
+                os.path.join(sparse_dir, "cameras.txt"),
+            ]:
+                if os.path.exists(cameras_txt):
+                    try:
+                        _patch_cameras_txt_focal_length(cameras_txt, fl_px)
+                        print(f"        • Patched focal length → {fl_px:.1f}px in {os.path.relpath(cameras_txt, scene_path)}")
+                    except Exception as e:
+                        print(f"        [WARN] Could not patch {cameras_txt}: {e}")
 
     print(f"        ✓ Finished \"{base_name}\"  ({idx}/{total})")
 
