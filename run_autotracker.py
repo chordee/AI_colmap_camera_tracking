@@ -190,7 +190,8 @@ def main():
                 h_ply = os.path.abspath(ply_path)
                 h_hip = os.path.abspath(hip_path)
 
-                cmd_houdini = [h_exec, h_script, h_json, h_ply, h_hip]
+                cmd_houdini = [h_exec, h_script, h_json, h_ply, h_hip,
+                               "--sensor_width_mm", str(args.sensor_width_mm)]
                 print(f"Running Houdini: {' '.join(cmd_houdini)}")
                 
                 # Check if executable exists and is not a directory
