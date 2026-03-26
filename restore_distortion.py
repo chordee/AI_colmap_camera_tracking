@@ -169,7 +169,8 @@ def main():
             pts_u = cv2.fisheye.undistortPoints(pts, K, D_fish, np.eye(3), new_K)
         else:
             # Standard Perspective
-            new_K, roi = cv2.getOptimalNewCameraMatrix(K, D, (w, h), alpha, (w, h))
+            # Use original K (same as undistortionNerfstudioColmap.py) to keep forward/reverse consistent
+            new_K = K.copy()
             # undistortPoints: Distorted -> Linear
             pts_u = cv2.undistortPoints(pts, K, D, None, new_K)
             
@@ -189,7 +190,8 @@ def main():
                 K, D_fish, np.eye(3), new_K, (w, h), cv2.CV_16SC2
             )
         else:
-            new_K, roi = cv2.getOptimalNewCameraMatrix(K, D, (w, h), alpha, (w, h))
+            # Use original K (same as undistortionNerfstudioColmap.py) to keep forward/reverse consistent
+            new_K = K.copy()
             map1, map2 = cv2.initUndistortRectifyMap(
                 K, D, None, new_K, (w, h), cv2.CV_16SC2
             )
