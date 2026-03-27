@@ -14,15 +14,17 @@ Automated pipeline for camera tracking and scene reconstruction using COLMAP and
 
 ## Prerequisites
 
-1. **Python 3.x**
+1. **[uv](https://docs.astral.sh/uv/)** — Python package and environment manager.
 2. **FFmpeg** — video processing.
 3. **[COLMAP 4.0+](https://github.com/colmap/colmap)** — feature extraction, matching, and Global Mapper reconstruction.
 4. **Houdini (hython)** — required only for Houdini scene generation.
 
 ### Python Dependencies
 
+Dependencies are declared in `pyproject.toml` and managed by `uv`. To create the virtual environment and install all dependencies:
+
 ```bash
-pip install numpy opencv-python
+uv sync
 ```
 
 *Optional:* For automatic object masking in `colmap2nerf.py`, PyTorch and Detectron2 are required.
@@ -32,7 +34,7 @@ pip install numpy opencv-python
 The main entry point is `run_autotracker.py`.
 
 ```bash
-python run_autotracker.py <input_videos_dir> <output_dir> [options]
+uv run python run_autotracker.py <input_videos_dir> <output_dir> [options]
 ```
 
 ### Arguments
@@ -81,7 +83,7 @@ Create a `params.json`:
 
 Then pass it:
 ```bash
-python run_autotracker.py ./in ./out --extra_fe params.json
+uv run python run_autotracker.py ./in ./out --extra_fe params.json
 ```
 
 ### Masking
@@ -96,7 +98,7 @@ The pipeline supports per-frame masks to exclude moving objects or unwanted regi
 ### Example
 
 ```bash
-python run_autotracker.py ./videos ./output \
+uv run python run_autotracker.py ./videos ./output \
     --scale 0.5 \
     --focal_length_mm 20 \
     --sensor_width_mm 36 \
@@ -110,7 +112,7 @@ python run_autotracker.py ./videos ./output \
 ### Usage
 
 ```bash
-python batch_run.py <target_directory>
+uv run python batch_run.py <target_directory>
 ```
 
 ### Configuration Format (`batch_config.ini`)
