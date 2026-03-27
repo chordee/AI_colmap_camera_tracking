@@ -4,11 +4,13 @@ import subprocess
 import glob
 import argparse
 import json
+import cv2
+import piexif
+from tqdm import tqdm
 
 # System Binaries (Ensure these are in your PATH)
 FFMPEG = "ffmpeg"
 COLMAP = "colmap"
-GLOMAP = "glomap"
 
 def run_command(cmd, error_msg, quiet=False):
     """Runs a subprocess command. Returns True on success, False on failure."""
@@ -19,7 +21,7 @@ def run_command(cmd, error_msg, quiet=False):
             kwargs['stderr'] = subprocess.DEVNULL
         
         # Run command
-        # print(f"DEBUG: Running command: {' '.join(cmd)}")
+        print(f"DEBUG: Running command: {' '.join(cmd)}")
         subprocess.run(cmd, check=True, **kwargs)
         return True
     except subprocess.CalledProcessError:
@@ -30,7 +32,48 @@ def run_command(cmd, error_msg, quiet=False):
         print(error_msg)
         return False
 
-def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mask_path=None, multi_cams=False, acescg=False, lut_path=None, mapper="glomap", camera_model=None, loop=False, loop_period=5, loop_num_images=50, vocab_tree_path=None, extra_fe=None, extra_sm=None, extra_ma=None):
+def _patch_cameras_bin_focal_length(cameras_bin_path, fl_px):
+    """Overwrite focal length in a COLMAP cameras.bin with the specified value."""
+    import struct
+    # model_id -> (num_params, single_f)
+    # single_f=True: only params[0] is focal length
+    # single_f=False: params[0]=fx, params[1]=fy
+    MODEL_PARAMS = {
+        0:  (3,  True),   # SIMPLE_PINHOLE
+        1:  (4,  False),  # PINHOLE
+        2:  (4,  True),   # SIMPLE_RADIAL
+        3:  (5,  True),   # RADIAL
+        4:  (8,  False),  # OPENCV
+        5:  (8,  False),  # OPENCV_FISHEYE
+        6:  (12, False),  # FULL_OPENCV
+        7:  (5,  False),  # FOV
+        8:  (4,  True),   # SIMPLE_RADIAL_FISHEYE
+        9:  (5,  True),   # RADIAL_FISHEYE
+        10: (12, False),  # THIN_PRISM_FISHEYE
+    }
+    with open(cameras_bin_path, 'rb') as f:
+        data = bytearray(f.read())
+    offset = 0
+    num_cameras = struct.unpack_from('<Q', data, offset)[0]
+    offset += 8
+    for _ in range(num_cameras):
+        offset += 4  # camera_id: uint32
+        model_id = struct.unpack_from('<i', data, offset)[0]
+        offset += 4  # model_id: int32
+        offset += 8  # width: uint64
+        offset += 8  # height: uint64
+        if model_id not in MODEL_PARAMS:
+            raise ValueError(f"Unknown COLMAP camera model_id: {model_id}")
+        num_params, single_f = MODEL_PARAMS[model_id]
+        struct.pack_into('<d', data, offset, fl_px)       # fx or f
+        if not single_f:
+            struct.pack_into('<d', data, offset + 8, fl_px)  # fy
+        offset += num_params * 8
+    with open(cameras_bin_path, 'wb') as f:
+        f.write(data)
+
+
+def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mask_path=None, multi_cams=False, acescg=False, lut_path=None, camera_model=None, loop=False, loop_period=5, loop_num_images=50, vocab_tree_path=None, extra_fe=None, extra_sm=None, extra_ma=None, focal_length_mm=None, sensor_width_mm=36.0):
     # Get base name and extension
     base_name = os.path.splitext(os.path.basename(video_path))[0]
     ext = os.path.splitext(video_path)[1]
@@ -146,6 +189,66 @@ def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mas
         print(f"        × No frames extracted – skipping \"{base_name}\".")
         return
 
+    # Compute pixel focal length (used for EXIF, camera_params, and post-BA patching)
+    fl_px = None
+    if focal_length_mm:
+        first_img = cv2.imread(all_images[0])
+        if first_img is not None:
+            real_h, real_w = first_img.shape[:2]
+            fl_px = (focal_length_mm / sensor_width_mm) * real_w
+        else:
+            print(f"        [WARN] Could not read first frame to compute focal length in pixels.")
+
+    # Write focal length to EXIF of all extracted frames
+    if focal_length_mm:
+        fl_35mm = round(focal_length_mm * 36.0 / sensor_width_mm)
+        fl_rational = (round(focal_length_mm * 100), 100)
+        exif_dict = {"Exif": {
+            piexif.ExifIFD.FocalLength: fl_rational,
+            piexif.ExifIFD.FocalLengthIn35mmFilm: fl_35mm,
+        }}
+        exif_bytes = piexif.dump(exif_dict)
+        for img_path in tqdm(all_images, desc="        Writing EXIF focal length", unit="frame"):
+            try:
+                piexif.insert(exif_bytes, img_path)
+            except Exception as e:
+                print(f"        [WARN] Could not write EXIF to {os.path.basename(img_path)}: {e}")
+
+    # Inject focal length as camera_params if specified
+    if fl_px is not None and not (extra_fe and "ImageReader.camera_params" in extra_fe):
+        cx = real_w / 2.0
+        cy = real_h / 2.0
+
+        model = camera_model or "OPENCV"
+        model_upper = model.upper()
+        if model_upper in ("SIMPLE_PINHOLE", "SIMPLE_RADIAL_FISHEYE"):
+            params_str = f"{fl_px},{cx},{cy}"
+            if model_upper == "SIMPLE_RADIAL_FISHEYE":
+                params_str += ",0"
+        elif model_upper in ("PINHOLE",):
+            params_str = f"{fl_px},{fl_px},{cx},{cy}"
+        elif model_upper == "SIMPLE_RADIAL":
+            params_str = f"{fl_px},{cx},{cy},0"
+        elif model_upper == "RADIAL":
+            params_str = f"{fl_px},{cx},{cy},0,0"
+        else:
+            # OPENCV, OPENCV_FISHEYE, and others default to 8-param format
+            params_str = f"{fl_px},{fl_px},{cx},{cy},0,0,0,0"
+
+        print(f"        • Focal length: {focal_length_mm}mm / {sensor_width_mm}mm sensor → {fl_px:.1f}px  (camera_params: {params_str})")
+
+        if not camera_model:
+            camera_model = "OPENCV"
+
+        if extra_fe is None:
+            extra_fe = {}
+        extra_fe["ImageReader.camera_params"] = params_str
+
+        # Attempt to prevent bundle adjustment from refining the focal length
+        if extra_ma is None:
+            extra_ma = {}
+        extra_ma.setdefault("GlobalMapper.ba_refine_focal_length", "0")
+
     # Optional: Check mask count consistency
     if final_mask_path:
         all_masks = glob.glob(os.path.join(final_mask_path, "*.jpg.png"))
@@ -164,10 +267,7 @@ def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mas
     if camera_model:
         cmd_colmap_fe.extend(["--ImageReader.camera_model", camera_model])
 
-    if mapper == "colmap":
-        cmd_colmap_fe.extend(["--FeatureExtraction.use_gpu", "1"])
-    else:
-        cmd_colmap_fe.extend(["--SiftExtraction.use_gpu", "1"])
+    cmd_colmap_fe.extend(["--FeatureExtraction.use_gpu", "1"])
     
     if multi_cams:
         cmd_colmap_fe.extend(["--ImageReader.single_camera_per_folder", "1"])
@@ -210,24 +310,14 @@ def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mas
         return
 
     # 4) Sparse reconstruction
-    if mapper == "colmap":
-        print("        [4/4] COLMAP global mapper ...")
-        cmd_mapper = [
-            COLMAP, "global_mapper",
-            "--database_path", database_path,
-            "--image_path", img_dir,
-            "--output_path", sparse_dir
-        ]
-        fail_msg = f"        × colmap global_mapper failed – skipping \"{base_name}\"."
-    else:
-        print("        [4/4] GLOMAP mapper ...")
-        cmd_mapper = [
-            GLOMAP, "mapper",
-            "--database_path", database_path,
-            "--image_path", img_dir,
-            "--output_path", sparse_dir
-        ]
-        fail_msg = f"        × glomap mapper failed – skipping \"{base_name}\"."
+    print("        [4/4] COLMAP global mapper ...")
+    cmd_mapper = [
+        COLMAP, "global_mapper",
+        "--database_path", database_path,
+        "--image_path", img_dir,
+        "--output_path", sparse_dir
+    ]
+    fail_msg = f"        × colmap global_mapper failed – skipping \"{base_name}\"."
 
     # Inject extra mapper args
     if extra_ma:
@@ -236,6 +326,32 @@ def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mas
 
     if not run_command(cmd_mapper, fail_msg):
         return
+
+    # Re-run bundle adjustment with focal length fixed to the user-specified value.
+    # The mapper's BA may still refine the focal length despite the flag, so we:
+    # 1. Patch cameras.bin to reset focal length to fl_px
+    # 2. Re-run colmap bundle_adjuster with refine_focal_length=0
+    # This ensures intrinsics and extrinsics remain consistent.
+    if fl_px is not None:
+        cameras_bin = os.path.join(sparse_dir, "0", "cameras.bin")
+        if os.path.exists(cameras_bin):
+            try:
+                _patch_cameras_bin_focal_length(cameras_bin, fl_px)
+                print(f"        • Patched cameras.bin → focal length reset to {fl_px:.1f}px")
+            except Exception as e:
+                print(f"        [WARN] Could not patch cameras.bin: {e}")
+            else:
+                sparse_0_dir_ba = os.path.join(sparse_dir, "0")
+                cmd_ba = [
+                    COLMAP, "bundle_adjuster",
+                    "--input_path", sparse_0_dir_ba,
+                    "--output_path", sparse_0_dir_ba,
+                    "--BundleAdjustment.refine_focal_length", "0",
+                ]
+                if not run_command(cmd_ba, "        [WARN] bundle_adjuster (fixed focal) failed — continuing without re-BA"):
+                    pass  # Non-fatal: TXT export still proceeds with patched cameras.bin
+        else:
+            print(f"        [WARN] cameras.bin not found at {cameras_bin} — skipping focal length patch.")
 
     # Export TXT inside the model folder
     # Keep TXT next to BIN so Blender can import from sparse\0 directly.
@@ -270,7 +386,6 @@ def main():
     parser.add_argument("--multi-cams", action="store_true", help="Allow processing multiple videos with different camera settings")
     parser.add_argument("--acescg", action="store_true", help="Convert input ACEScg colorspace to sRGB")
     parser.add_argument("--lut", help="Path to .cube LUT file for color conversion (optional)")
-    parser.add_argument("--mapper", choices=["glomap", "colmap"], default="glomap", help="Choose mapper: glomap (standalone) or colmap (integrated GLOMAP, requires COLMAP >= 3.14). Default: glomap")
     parser.add_argument("--camera_model", help="Specify COLMAP camera model (e.g., OPENCV, PINHOLE, SIMPLE_RADIAL). Default: Auto (COLMAP decides)")
     parser.add_argument("--loop", action="store_true", help="Enable COLMAP loop detection in sequential matching")
     parser.add_argument("--loop_period", type=int, default=5, help="COLMAP loop detection period (default: 5)")
@@ -279,6 +394,8 @@ def main():
     parser.add_argument("--extra_fe", help="Extra arguments for feature extraction (JSON string or path to .json file)")
     parser.add_argument("--extra_sm", help="Extra arguments for sequential matching (JSON string or path to .json file)")
     parser.add_argument("--extra_ma", help="Extra arguments for mapping (JSON string or path to .json file)")
+    parser.add_argument("--focal_length_mm", type=float, default=None, help="Lens focal length in mm (e.g. 24). Combined with --sensor_width_mm to set COLMAP camera_params.")
+    parser.add_argument("--sensor_width_mm", type=float, default=36.0, help="Sensor width in mm (default: 36.0 full-frame). Common values: ARRI LF=36.7, Super35=24.89, MFT=17.3")
     
     # If no arguments provided, print help
     if len(sys.argv) == 1:
@@ -356,7 +473,7 @@ def main():
             multi_cams=args.multi_cams,
             acescg=args.acescg,
             lut_path=lut_path,
-            mapper=args.mapper,
+
             camera_model=args.camera_model,
             loop=args.loop,
             loop_period=args.loop_period,
@@ -364,7 +481,9 @@ def main():
             vocab_tree_path=args.vocab_tree_path,
             extra_fe=extra_fe,
             extra_sm=extra_sm,
-            extra_ma=extra_ma
+            extra_ma=extra_ma,
+            focal_length_mm=args.focal_length_mm,
+            sensor_width_mm=args.sensor_width_mm
         )
 
     print("--------------------------------------------------------------")

@@ -1,4 +1,5 @@
 import hou
+import argparse
 import json
 import os
 import re
@@ -38,17 +39,38 @@ def create_animated_camera(json_path, global_scale=1, cam_name="Nerfstudio_Anima
     # Read resolution and focal length
     img_w = float(data.get("w", 1920))
     img_h = float(data.get("h", 1080))
-    fl_x = float(data.get("fl_x", 1000)) # Focal Length in Pixels
+    fl_x  = float(data.get("fl_x", 1000))  # Focal length in pixels
+    cx    = float(data.get("cx", img_w / 2))
+    cy    = float(data.get("cy", img_h / 2))
 
-    # Convert to Houdini Focal Length (mm)
-    focal_mm = (fl_x / img_w) * aperture_width
+    # sensor_w/sensor_h: original sensor dimensions before canvas expansion.
+    # Written by undistortionNerfstudioColmap.py when the undistorted canvas is
+    # larger than the original image.  Falls back to img_w/img_h for older JSON
+    # files (where no expansion occurred).
+    sensor_w = float(data.get("sensor_w", img_w))
+
+    # Physical focal length — must be derived from the original sensor width,
+    # not the (potentially expanded) canvas width, so the mm value is stable.
+    focal_mm = (fl_x / sensor_w) * aperture_width
+
+    # Scale aperture to match the expanded canvas so that Houdini's
+    # focal/aperture ratio correctly represents the wider field of view.
+    # When sensor_w == img_w (no expansion), aperture_effective == aperture_width.
+    aperture_effective = aperture_width * (img_w / sensor_w)
+
+    # Principal-point offset expressed as a fraction of the canvas width.
+    # Houdini winx/winy shift the projection window; 0 = centred.
+    # winx > 0 → window centre moves left  (principal point left of centre)
+    # winy > 0 → window centre moves up    (principal point above centre)
+    winx = (img_w / 2 - cx) / img_w
+    winy = (img_h / 2 - cy) / img_w   # note: divided by img_w, same unit as winx
 
     # 3. Create Houdini nodes
     obj = hou.node("/obj")
     subnet = obj.node("NeRF_Import")
     if not subnet:
         subnet = obj.createNode("subnet", "NeRF_Import")
-    
+
     # Create camera (destroy and recreate if it already exists)
     cam = subnet.node(cam_name)
     if cam:
@@ -60,44 +82,36 @@ def create_animated_camera(json_path, global_scale=1, cam_name="Nerfstudio_Anima
     # Set static camera parameters
     cam.parm("resx").set(img_w)
     cam.parm("resy").set(img_h)
-    cam.parm("aperture").set(aperture_width)
+    cam.parm("aperture").set(aperture_effective)
     cam.parm("focal").set(focal_mm)
+    cam.parm("winx").set(winx)
+    cam.parm("winy").set(winy)
     cam.parm("iconscale").set(0.5)
 
     # Set background image for viewport
     cam.parm("vm_background").set(background_image_path)
 
-    # 4. Prepare coordinate transformation matrix (Z-up -> Y-up) (Maybe...)
-    correction_rot = hou.hmath.buildRotate(0, 0, 0)
-
-    # 5. Process animation keyframes
+    # 4. Process animation keyframes
     with hou.undos.group("Import Nerfstudio Camera"):
-        
+
         for frame_data in frames:
             # Get Frame Number
             f_num = get_frame_num(frame_data)
-            
+
             # Read matrix
             raw_mtx = frame_data["transform_matrix"]
-            
-            # [Correction]: Variable name typo fixed, now using raw_mtx
+
             if isinstance(raw_mtx[0], list):
                 flat_mtx = [item for sublist in raw_mtx for item in sublist]
             else:
                 flat_mtx = raw_mtx
-            
-            # Convert to Houdini Matrix4
-            h_mtx = hou.Matrix4(tuple(flat_mtx))
-            
-            # Transpose matrix (Column-Major -> Row-Major)
-            h_mtx = h_mtx.transposed()
-            
-            # Apply coordinate correction
-            final_mtx = h_mtx * correction_rot
-            
+
+            # Convert to Houdini Matrix4 and transpose (Column-Major -> Row-Major)
+            h_mtx = hou.Matrix4(tuple(flat_mtx)).transposed()
+
             # Extract transform data
-            tra = final_mtx.extractTranslates()
-            rot = final_mtx.extractRotates()
+            tra = h_mtx.extractTranslates()
+            rot = h_mtx.extractRotates()
 
             # Prepare values (apply scaling)
             tx = tra[0] * global_scale
@@ -132,16 +146,20 @@ def create_animated_camera(json_path, global_scale=1, cam_name="Nerfstudio_Anima
     print(f"Success! Animated camera created at: {cam.path()}")
     
 if __name__ == "__main__":
-    if len(sys.argv) < 4:
-        print("Usage: hython build_houdini_scene.py <json_path> <point_cloud_path> <output_hip_path>")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description="Build Houdini scene from Nerfstudio transforms JSON")
+    parser.add_argument("json_path",         help="Path to transforms_undistorted.json")
+    parser.add_argument("point_cloud_path",  help="Path to points3D.ply")
+    parser.add_argument("output_hip_path",   help="Path for the output .hip file")
+    parser.add_argument("--sensor_width_mm", type=float, default=36.0,
+                        help="Physical sensor width in mm (default: 36.0 full-frame). "
+                             "Common values: ARRI LF=36.7, Super35=24.89, MFT=17.3")
+    args = parser.parse_args()
 
-    # Handle paths (support relative or absolute)
-    json_path = os.path.abspath(sys.argv[1])
-    point_cloud_path = os.path.abspath(sys.argv[2])
-    output_hip_path = os.path.abspath(sys.argv[3])
+    json_path        = os.path.abspath(args.json_path)
+    point_cloud_path = os.path.abspath(args.point_cloud_path)
+    output_hip_path  = os.path.abspath(args.output_hip_path)
 
-    create_animated_camera(json_path=json_path)
+    create_animated_camera(json_path=json_path, aperture_width=args.sensor_width_mm)
     
     scene = hou.node("/obj").createNode('geo', 'Scene')
     file_node = scene.createNode('file', 'Import_Point_Cloud')

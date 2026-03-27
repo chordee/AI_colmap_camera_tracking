@@ -12,7 +12,6 @@ def main():
     # Sync arguments with run_autotracker.py
     parser.add_argument("--scale", type=float, help="Default scale argument")
     parser.add_argument("--overlap", type=int, help="Default sequential matching overlap")
-    parser.add_argument("--mapper", choices=["glomap", "colmap"], help="Default mapper")
     parser.add_argument("--camera_model", help="Default COLMAP camera model")
     parser.add_argument("--mask", help="Default mask directory root")
     parser.add_argument("--lut", help="Default path to .cube LUT file")
@@ -24,6 +23,9 @@ def main():
     parser.add_argument("--loop_period", type=int, help="Default loop detection period")
     parser.add_argument("--loop_num_images", type=int, help="Default loop detection number of images")
     parser.add_argument("--vocab_tree_path", help="Default vocabulary tree path")
+    parser.add_argument("--focal_length_mm", type=float, default=None, help="Lens focal length in mm (e.g. 24)")
+    parser.add_argument("--sensor_width_mm", type=float, default=None, help="Sensor width in mm (default: 36.0 full-frame)")
+    parser.add_argument("--crop", action="store_true", help="Keep original canvas size during undistortion")
     
     args = parser.parse_args()
 
@@ -86,43 +88,51 @@ def main():
 
             # Map settings to command
             s_scale = get_setting('scale', args.scale)
-            if s_scale: cmd.extend(['--scale', str(s_scale)])
-            
+            if s_scale is not None: cmd.extend(['--scale', str(s_scale)])
+
             s_overlap = get_setting('overlap', args.overlap)
-            if s_overlap: cmd.extend(['--overlap', str(s_overlap)])
-            
-            s_mapper = get_setting('mapper', args.mapper)
-            if s_mapper: cmd.extend(['--mapper', s_mapper])
-            
+            if s_overlap is not None: cmd.extend(['--overlap', str(s_overlap)])
+
             s_cam = get_setting('camera_model', args.camera_model)
             if s_cam: cmd.extend(['--camera_model', s_cam])
-            
+
             s_mask = get_setting('mask', args.mask)
             if s_mask: cmd.extend(['--mask', s_mask])
-            
+
             s_lut = get_setting('lut', args.lut)
             if s_lut: cmd.extend(['--lut', s_lut])
-            
+
             s_hfs = get_setting('hfs', args.hfs)
             if s_hfs: cmd.extend(['--hfs', s_hfs])
-            
+
             if get_setting('multi_cams', args.multi_cams, is_bool=True):
                 cmd.append('--multi-cams')
-            
+
             if get_setting('acescg', args.acescg, is_bool=True):
                 cmd.append('--acescg')
-                
+
             if get_setting('skip_houdini', args.skip_houdini, is_bool=True):
                 cmd.append('--skip-houdini')
 
             if get_setting('loop', args.loop, is_bool=True):
                 cmd.append('--loop')
                 s_loop_p = get_setting('loop_period', args.loop_period)
-                if s_loop_p: cmd.extend(['--loop_period', str(s_loop_p)])
+                if s_loop_p is not None: cmd.extend(['--loop_period', str(s_loop_p)])
                 s_loop_n = get_setting('loop_num_images', args.loop_num_images)
-                if s_loop_n: cmd.extend(['--loop_num_images', str(s_loop_n)])
+                if s_loop_n is not None: cmd.extend(['--loop_num_images', str(s_loop_n)])
                 s_vocab = get_setting('vocab_tree_path', args.vocab_tree_path)
                 if s_vocab: cmd.extend(['--vocab_tree_path', s_vocab])
+
+            s_focal = get_setting('focal_length_mm', args.focal_length_mm)
+            if s_focal is not None:
+                cmd.extend(['--focal_length_mm', str(s_focal)])
+
+            s_sensor = get_setting('sensor_width_mm', args.sensor_width_mm)
+            if s_sensor is not None:
+                cmd.extend(['--sensor_width_mm', str(s_sensor)])
+
+            if get_setting('crop', args.crop, is_bool=True):
+                cmd.append('--crop')
 
             # Handle dynamic extra arguments (fe.*, sm.*, ma.*)
             def collect_prefixed_settings(prefix):

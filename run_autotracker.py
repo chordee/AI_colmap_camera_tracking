@@ -16,7 +16,6 @@ def main():
     parser.add_argument("--acescg", action="store_true", help="Convert input ACEScg colorspace to sRGB")
     parser.add_argument("--lut", help="Path to .cube LUT file for color conversion (optional)")
     parser.add_argument("--mask", help="Path to mask directory root (optional)")
-    parser.add_argument("--mapper", choices=["glomap", "colmap"], default="glomap", help="Choose mapper: glomap (standalone) or colmap (integrated Global Mapper). Default: glomap")
     parser.add_argument("--camera_model", help="Specify COLMAP camera model (e.g., OPENCV, PINHOLE, SIMPLE_RADIAL). Default: Auto (COLMAP decides)")
     parser.add_argument("--loop", action="store_true", help="Enable COLMAP loop detection in sequential matching")
     parser.add_argument("--loop_period", type=int, default=5, help="COLMAP loop detection period (default: 5)")
@@ -25,6 +24,9 @@ def main():
     parser.add_argument("--extra_fe", help="Extra arguments for feature extraction (JSON string or path to .json file)")
     parser.add_argument("--extra_sm", help="Extra arguments for sequential matching (JSON string or path to .json file)")
     parser.add_argument("--extra_ma", help="Extra arguments for mapping (JSON string or path to .json file)")
+    parser.add_argument("--focal_length_mm", type=float, default=None, help="Lens focal length in mm (e.g. 24). Combined with --sensor_width_mm to set COLMAP camera_params.")
+    parser.add_argument("--sensor_width_mm", type=float, default=36.0, help="Sensor width in mm (default: 36.0 full-frame). Common values: ARRI LF=36.7, Super35=24.89, MFT=17.3")
+    parser.add_argument("--crop", action="store_true", help="Keep original canvas size during undistortion instead of expanding it. Focal length and aperture in Houdini remain at their nominal physical values.")
 
     args = parser.parse_args()
 
@@ -55,8 +57,6 @@ def main():
         cmd1.extend(["--lut", args.lut])
     if args.mask:
         cmd1.extend(["--mask", args.mask])
-    if args.mapper:
-        cmd1.extend(["--mapper", args.mapper])
     if args.camera_model:
         cmd1.extend(["--camera_model", args.camera_model])
     if args.loop:
@@ -72,6 +72,9 @@ def main():
         cmd1.extend(["--extra_sm", args.extra_sm])
     if args.extra_ma:
         cmd1.extend(["--extra_ma", args.extra_ma])
+    if args.focal_length_mm:
+        cmd1.extend(["--focal_length_mm", str(args.focal_length_mm)])
+        cmd1.extend(["--sensor_width_mm", str(args.sensor_width_mm)])
         
     print(f"Running: {' '.join(cmd1)}")
     try:
@@ -141,10 +144,11 @@ def main():
         undistort_output_dir = os.path.join(output_path, folder_name, "undistort")
         cmd_undistort = [
             sys.executable, undistortion_script,
-            "--no-crop",
             "--json_path", json_path,
             "--output_dir", undistort_output_dir
         ]
+        if args.crop:
+            cmd_undistort.append("--crop")
         print(f"Running: {' '.join(cmd_undistort)}")
         try:
             subprocess.run(cmd_undistort, check=True)
@@ -189,7 +193,8 @@ def main():
                 h_ply = os.path.abspath(ply_path)
                 h_hip = os.path.abspath(hip_path)
 
-                cmd_houdini = [h_exec, h_script, h_json, h_ply, h_hip]
+                cmd_houdini = [h_exec, h_script, h_json, h_ply, h_hip,
+                               "--sensor_width_mm", str(args.sensor_width_mm)]
                 print(f"Running Houdini: {' '.join(cmd_houdini)}")
                 
                 # Check if executable exists and is not a directory
