@@ -26,6 +26,7 @@ def main():
     parser.add_argument("--extra_ma", help="Extra arguments for mapping (JSON string or path to .json file)")
     parser.add_argument("--focal_length_mm", type=float, default=None, help="Lens focal length in mm (e.g. 24). Combined with --sensor_width_mm to set COLMAP camera_params.")
     parser.add_argument("--sensor_width_mm", type=float, default=36.0, help="Sensor width in mm (default: 36.0 full-frame). Common values: ARRI LF=36.7, Super35=24.89, MFT=17.3")
+    parser.add_argument("--crop", action="store_true", help="Keep original canvas size during undistortion instead of expanding it. Focal length and aperture in Houdini remain at their nominal physical values.")
 
     args = parser.parse_args()
 
@@ -146,6 +147,8 @@ def main():
             "--json_path", json_path,
             "--output_dir", undistort_output_dir
         ]
+        if args.crop:
+            cmd_undistort.append("--crop")
         print(f"Running: {' '.join(cmd_undistort)}")
         try:
             subprocess.run(cmd_undistort, check=True)

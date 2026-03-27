@@ -25,6 +25,7 @@ def main():
     parser.add_argument("--vocab_tree_path", help="Default vocabulary tree path")
     parser.add_argument("--focal_length_mm", type=float, default=None, help="Lens focal length in mm (e.g. 24)")
     parser.add_argument("--sensor_width_mm", type=float, default=None, help="Sensor width in mm (default: 36.0 full-frame)")
+    parser.add_argument("--crop", action="store_true", help="Keep original canvas size during undistortion")
     
     args = parser.parse_args()
 
@@ -129,6 +130,9 @@ def main():
             s_sensor = get_setting('sensor_width_mm', args.sensor_width_mm)
             if s_sensor is not None:
                 cmd.extend(['--sensor_width_mm', str(s_sensor)])
+
+            if get_setting('crop', args.crop, is_bool=True):
+                cmd.append('--crop')
 
             # Handle dynamic extra arguments (fe.*, sm.*, ma.*)
             def collect_prefixed_settings(prefix):
