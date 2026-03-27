@@ -65,6 +65,12 @@ def undistort_process(json_path, output_dir, crop=False):
     with open(json_path, 'r') as f:
         data = json.load(f)
 
+    camera_model = data.get("camera_model", "OPENCV")
+    if camera_model == "OPENCV_FISHEYE":
+        print("Error: OPENCV_FISHEYE camera model is not supported. "
+              "Use cv2.fisheye functions for equidistant distortion.")
+        return
+
     # 1. Camera intrinsics
     w    = int(data.get("w", 1920))
     h    = int(data.get("h", 1080))
@@ -128,7 +134,7 @@ def undistort_process(json_path, output_dir, crop=False):
     # Original sensor dimensions, kept for physical focal-length recovery in Houdini
     new_data["sensor_w"] = w
     new_data["sensor_h"] = h
-    # Updated field of view
+    # Updated field of view (symmetric approximation; Houdini uses fl_x/cx/w directly)
     new_data["camera_angle_x"] = math.atan(new_w / (fl_x * 2)) * 2
     new_data["camera_angle_y"] = math.atan(new_h / (fl_y * 2)) * 2
     # Zero out distortion coefficients (images are now undistorted)
@@ -151,6 +157,7 @@ def undistort_process(json_path, output_dir, crop=False):
 
         img = cv2.imread(str(img_path))
         if img is None:
+            print(f"Warning: Failed to read image: {img_path}")
             continue
 
         # Remap to the expanded canvas; black fill outside the original image area
@@ -158,14 +165,16 @@ def undistort_process(json_path, output_dir, crop=False):
 
         img_name = Path(rel_path).name
         save_path = images_out_dir / img_name
+        if save_path.exists():
+            print(f"Warning: Duplicate filename, overwriting: {img_name}")
         cv2.imwrite(str(save_path), dst)
 
         new_frame = frame.copy()
         new_frame["file_path"] = f"images_undistorted/{img_name}"
         new_frames.append(new_frame)
 
-        if idx % 20 == 0:
-            print(f"Processed {idx}/{len(frames)}...")
+        if (idx + 1) % 20 == 0 or (idx + 1) == len(frames):
+            print(f"Processed {idx + 1}/{len(frames)}...")
 
     new_data["frames"] = new_frames
 
