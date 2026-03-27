@@ -140,23 +140,31 @@ def main():
         temp_img = cv2.imread(first_img_path, read_flags)
         if temp_img is not None:
             real_h, real_w = temp_img.shape[:2]
-            
-            if real_w != w or real_h != h:
+
+            # In undistort+distortion_json mode the input images live in K_orig space,
+            # so compare against w_orig/h_orig rather than the K_new canvas.
+            if args.undistort and K_orig is not None:
+                ref_w, ref_h = w_orig, h_orig
+            else:
+                ref_w, ref_h = w, h
+
+            if real_w != ref_w or real_h != ref_h:
                 print(f"[WARN] Resolution Mismatch Detected!")
-                print(f"       JSON Calibration: {w}x{h}")
-                print(f"       Actual Image:     {real_w}x{real_h}")
-                
-                scale_x = real_w / w
-                scale_y = real_h / h
-                
+                print(f"       Reference Calibration: {ref_w}x{ref_h}")
+                print(f"       Actual Image:          {real_w}x{real_h}")
+
+                scale_x = real_w / ref_w
+                scale_y = real_h / ref_h
+
                 print(f"       -> Scaling intrinsics by X:{scale_x:.4f}, Y:{scale_y:.4f}")
-                
+
+                # Scale K_new canvas (always)
                 fl_x *= scale_x
                 fl_y *= scale_y
-                cx *= scale_x
-                cy *= scale_y
-                w = real_w
-                h = real_h
+                cx   *= scale_x
+                cy   *= scale_y
+                w = int(round(w * scale_x))
+                h = int(round(h * scale_y))
                 if K_orig is not None:
                     K_orig[0, 0] *= scale_x
                     K_orig[1, 1] *= scale_y
@@ -165,7 +173,7 @@ def main():
                     w_orig = int(round(w_orig * scale_x))
                     h_orig = int(round(h_orig * scale_y))
             else:
-                print(f"       Resolution matches ({w}x{h}).")
+                print(f"       Resolution matches ({ref_w}x{ref_h}).")
         else:
             print(f"[WARN] Could not read first image {first_img_path} to verify resolution.")
     else:
@@ -240,11 +248,17 @@ def main():
                 K, D_fish, np.eye(3), new_K, (w, h), cv2.CV_16SC2
             )
         else:
-            # Use original K (same as undistortionNerfstudioColmap.py) to keep forward/reverse consistent
-            new_K = K.copy()
-            map1, map2 = cv2.initUndistortRectifyMap(
-                K, D, None, new_K, (w, h), cv2.CV_16SC2
-            )
+            if K_orig is not None:
+                # Expand-mode: input in K_orig space (distorted), output in K_new space
+                map1, map2 = cv2.initUndistortRectifyMap(
+                    K_orig, D, None, K, (w, h), cv2.CV_16SC2
+                )
+                print(f"  [Expand-mode undistort] Output: {w}x{h}")
+            else:
+                new_K = K.copy()
+                map1, map2 = cv2.initUndistortRectifyMap(
+                    K, D, None, new_K, (w, h), cv2.CV_16SC2
+                )
 
     # 7. Prepare Output Directory
     if not os.path.exists(args.output_dir):
