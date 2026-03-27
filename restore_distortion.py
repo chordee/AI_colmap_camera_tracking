@@ -12,6 +12,10 @@ def parse_args():
     parser.add_argument("--image_dir", type=str, default=None, help="Override the directory to search for input images.")
     parser.add_argument("--undistort", action="store_true", help="Undistort images (restore). Default is to apply distortion (reverse).")
     parser.add_argument("--exr", action="store_true", help="Process .exr files in the directory instead of frames in JSON. Default off.")
+    parser.add_argument("--distortion_json", type=str, default=None,
+                        help="Path to a second JSON (e.g. transforms.json) to read distortion coefficients from. "
+                             "Use when --json_path points to transforms_undistorted.json (expand mode) where "
+                             "distortion values have been zeroed out.")
     return parser.parse_args()
 
 def main():
@@ -48,6 +52,26 @@ def main():
     except KeyError as e:
         print(f"Error: Missing critical key in JSON data: {e}")
         sys.exit(1)
+
+    # 2b. Override distortion coefficients from a separate JSON if provided.
+    # Use this when --json_path is transforms_undistorted.json (expand mode):
+    # it carries the correct canvas geometry but distortion has been zeroed out.
+    # --distortion_json should point to the original transforms.json which still
+    # holds the real k1/k2/k3/k4/p1/p2 values.
+    if args.distortion_json:
+        if not os.path.exists(args.distortion_json):
+            print(f"Error: distortion_json not found at {args.distortion_json}")
+            sys.exit(1)
+        print(f"Loading distortion coefficients from {args.distortion_json}...")
+        with open(args.distortion_json, 'r') as f:
+            dist_data = json.load(f)
+        k1 = float(dist_data.get('k1', 0))
+        k2 = float(dist_data.get('k2', 0))
+        k3 = float(dist_data.get('k3', 0))
+        k4 = float(dist_data.get('k4', 0))
+        p1 = float(dist_data.get('p1', 0))
+        p2 = float(dist_data.get('p2', 0))
+        is_fisheye = dist_data.get('is_fisheye', is_fisheye)
 
     # 3. Prepare File List (Moved up to check resolution)
     # Determine base directory for images
