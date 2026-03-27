@@ -7,27 +7,29 @@ import sys
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Restore (undistort) images based on camera calibration JSON.")
-    parser.add_argument("--json_path", type=str, required=True, help="Path to the .json file (e.g., transforms.json).")
+    parser.add_argument("--undistorted_json", type=str, required=True,
+                        help="Path to the undistorted camera JSON (e.g. transforms_undistorted.json). "
+                             "Carries the output canvas geometry (K_new) with zeroed distortion coefficients.")
     parser.add_argument("--output_dir", type=str, default="restored_output", help="Directory to save the restored images.")
     parser.add_argument("--image_dir", type=str, default=None, help="Override the directory to search for input images.")
     parser.add_argument("--undistort", action="store_true", help="Undistort images (restore). Default is to apply distortion (reverse).")
     parser.add_argument("--exr", action="store_true", help="Process .exr files in the directory instead of frames in JSON. Default off.")
-    parser.add_argument("--distortion_json", type=str, default=None,
-                        help="Path to a second JSON (e.g. transforms.json) to read distortion coefficients from. "
-                             "Use when --json_path points to transforms_undistorted.json (expand mode) where "
-                             "distortion values have been zeroed out.")
+    parser.add_argument("--original_json", type=str, default=None,
+                        help="Path to the original camera JSON (e.g. *_transforms.json) before undistortion. "
+                             "Provides K_orig, original canvas size, and real distortion coefficients. "
+                             "Required when --undistorted_json has zeroed-out distortion (expand mode).")
     return parser.parse_args()
 
 def main():
     args = parse_args()
     
     # 1. Load JSON Data
-    if not os.path.exists(args.json_path):
-        print(f"Error: JSON file not found at {args.json_path}")
+    if not os.path.exists(args.undistorted_json):
+        print(f"Error: JSON file not found at {args.undistorted_json}")
         sys.exit(1)
 
-    print(f"Loading calibration data from {args.json_path}...")
-    with open(args.json_path, 'r') as f:
+    print(f"Loading calibration data from {args.undistorted_json}...")
+    with open(args.undistorted_json, 'r') as f:
         data = json.load(f)
 
     # 2. Extract Camera Parameters
@@ -54,18 +56,18 @@ def main():
         sys.exit(1)
 
     # 2b. Override distortion coefficients from a separate JSON if provided.
-    # Use this when --json_path is transforms_undistorted.json (expand mode):
+    # Use this when --undistorted_json is transforms_undistorted.json (expand mode):
     # it carries the correct canvas geometry but distortion has been zeroed out.
-    # --distortion_json should point to the original transforms.json which still
+    # --original_json should point to the original transforms.json which still
     # holds the real k1/k2/k3/k4/p1/p2 values.
     K_orig = None
     w_orig = h_orig = None
-    if args.distortion_json:
-        if not os.path.exists(args.distortion_json):
-            print(f"Error: distortion_json not found at {args.distortion_json}")
+    if args.original_json:
+        if not os.path.exists(args.original_json):
+            print(f"Error: distortion_json not found at {args.original_json}")
             sys.exit(1)
-        print(f"Loading distortion coefficients from {args.distortion_json}...")
-        with open(args.distortion_json, 'r') as f:
+        print(f"Loading distortion coefficients from {args.original_json}...")
+        with open(args.original_json, 'r') as f:
             dist_data = json.load(f)
         k1 = float(dist_data.get('k1', 0))
         k2 = float(dist_data.get('k2', 0))
@@ -87,7 +89,7 @@ def main():
 
     # 3. Prepare File List (Moved up to check resolution)
     # Determine base directory for images
-    base_dir = args.image_dir if args.image_dir else os.path.dirname(os.path.abspath(args.json_path))
+    base_dir = args.image_dir if args.image_dir else os.path.dirname(os.path.abspath(args.undistorted_json))
 
     # Prepare file list and read flags
     files_to_process = []
@@ -141,7 +143,7 @@ def main():
         if temp_img is not None:
             real_h, real_w = temp_img.shape[:2]
 
-            # In undistort+distortion_json mode the input images live in K_orig space,
+            # In undistort+original_json mode the input images live in K_orig space,
             # so compare against w_orig/h_orig rather than the K_new canvas.
             if args.undistort and K_orig is not None:
                 ref_w, ref_h = w_orig, h_orig
