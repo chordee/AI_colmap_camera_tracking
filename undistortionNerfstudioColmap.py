@@ -135,8 +135,8 @@ def undistort_process(json_path, output_dir, crop=False):
     new_data["sensor_w"] = w
     new_data["sensor_h"] = h
     # Updated field of view (symmetric approximation; Houdini uses fl_x/cx/w directly)
-    new_data["camera_angle_x"] = math.atan(new_w / (fl_x * 2)) * 2
-    new_data["camera_angle_y"] = math.atan(new_h / (fl_y * 2)) * 2
+    new_data["camera_angle_x"] = 2 * math.atan(new_w / (2 * fl_x))
+    new_data["camera_angle_y"] = 2 * math.atan(new_h / (2 * fl_y))
     # Zero out distortion coefficients (images are now undistorted)
     for key in ["k1", "k2", "k3", "k4", "p1", "p2"]:
         new_data[key] = 0.0
