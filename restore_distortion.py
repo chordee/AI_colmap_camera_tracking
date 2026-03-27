@@ -58,6 +58,8 @@ def main():
     # it carries the correct canvas geometry but distortion has been zeroed out.
     # --distortion_json should point to the original transforms.json which still
     # holds the real k1/k2/k3/k4/p1/p2 values.
+    K_orig = None
+    w_orig = h_orig = None
     if args.distortion_json:
         if not os.path.exists(args.distortion_json):
             print(f"Error: distortion_json not found at {args.distortion_json}")
@@ -72,6 +74,16 @@ def main():
         p1 = float(dist_data.get('p1', 0))
         p2 = float(dist_data.get('p2', 0))
         is_fisheye = dist_data.get('is_fisheye', is_fisheye)
+        # Expand-mode reverse: store original canvas geometry for correct re-distortion
+        try:
+            w_orig     = int(dist_data['w'])
+            h_orig     = int(dist_data['h'])
+            K_orig = np.array([[float(dist_data['fl_x']), 0,                      float(dist_data['cx'])],
+                               [0,                      float(dist_data['fl_y']), float(dist_data['cy'])],
+                               [0,                      0,                      1                      ]], dtype=np.float32)
+        except KeyError:
+            K_orig = None
+            w_orig = h_orig = None
 
     # 3. Prepare File List (Moved up to check resolution)
     # Determine base directory for images
@@ -145,6 +157,13 @@ def main():
                 cy *= scale_y
                 w = real_w
                 h = real_h
+                if K_orig is not None:
+                    K_orig[0, 0] *= scale_x
+                    K_orig[1, 1] *= scale_y
+                    K_orig[0, 2] *= scale_x
+                    K_orig[1, 2] *= scale_y
+                    w_orig = int(round(w_orig * scale_x))
+                    h_orig = int(round(h_orig * scale_y))
             else:
                 print(f"       Resolution matches ({w}x{h}).")
         else:
@@ -177,28 +196,35 @@ def main():
         # Reverse Mode (Default): Create Distorted Image from Linear Image
         # We need a map: Dest(Distorted) -> Src(Linear)
         
-        # 1. Create grid for Dest (Distorted)
-        grid_x, grid_y = np.meshgrid(np.arange(w), np.arange(h))
-        # Shape (N, 1, 2)
-        pts = np.stack([grid_x, grid_y], axis=-1).reshape(-1, 1, 2).astype(np.float32)
-        
         # 2. Map Distorted Points -> Linear Points
         if is_fisheye:
+            out_w, out_h = w, h
             D_fish = D[:4]
             # Estimate the linear camera matrix used in the undistorted input
             new_K = cv2.fisheye.estimateNewCameraMatrixForUndistortRectify(
                 K, D_fish, (w, h), np.eye(3), balance=alpha
             )
+            grid_x, grid_y = np.meshgrid(np.arange(out_w), np.arange(out_h))
+            pts = np.stack([grid_x, grid_y], axis=-1).reshape(-1, 1, 2).astype(np.float32)
             # undistortPoints: Distorted -> Linear
             pts_u = cv2.fisheye.undistortPoints(pts, K, D_fish, np.eye(3), new_K)
         else:
             # Standard Perspective
-            # Use original K (same as undistortionNerfstudioColmap.py) to keep forward/reverse consistent
-            new_K = K.copy()
-            # undistortPoints: Distorted -> Linear
-            pts_u = cv2.undistortPoints(pts, K, D, None, new_K)
-            
-        map_coords = pts_u.reshape(h, w, 2)
+            if K_orig is not None:
+                # Expand-mode: output in K_orig space (original size), sample from K_new space
+                out_w, out_h = w_orig, h_orig
+                K_dist   = K_orig
+                K_undist = K        # K_new from transforms_undistorted.json
+                print(f"  [Expand-mode reverse] Output: {out_w}x{out_h} (original size)")
+            else:
+                out_w, out_h = w, h
+                K_dist   = K
+                K_undist = K.copy()
+            grid_x, grid_y = np.meshgrid(np.arange(out_w), np.arange(out_h))
+            pts = np.stack([grid_x, grid_y], axis=-1).reshape(-1, 1, 2).astype(np.float32)
+            pts_u = cv2.undistortPoints(pts, K_dist, D, None, K_undist)
+
+        map_coords = pts_u.reshape(out_h, out_w, 2)
         map1, map2 = cv2.convertMaps(map_coords[..., 0], map_coords[..., 1], cv2.CV_16SC2, nninterpolation=False)
         
     else:
