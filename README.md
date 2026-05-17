@@ -37,6 +37,18 @@ The main entry point is `run_autotracker.py`.
 uv run python run_autotracker.py <input_videos_dir> <output_dir> [options]
 ```
 
+## Graphical User Interface (GUI)
+
+A PySide6-based GUI is available for a more user-friendly experience. It wraps the `run_autotracker.py` script and provides a real-time log of the processing steps.
+
+### Launching the GUI
+
+```bash
+uv run gui_autotracker.py
+```
+
+The GUI allows you to browse for input/output directories, adjust processing scales, select COLMAP camera models, and toggle advanced settings like loop detection or Houdini path configuration.
+
 ### Arguments
 
 | Argument | Default | Description |
