@@ -70,7 +70,7 @@ The GUI allows you to browse for input/output directories, adjust processing sca
 | `--focal_length_mm` | — | Lens focal length in mm (e.g. `24`). Locks COLMAP to this value instead of estimating it. |
 | `--sensor_width_mm` | `36.0` | Physical sensor width in mm. Used together with `--focal_length_mm`. Common values: full-frame=36.0, ARRI LF=36.7, Super35=24.89, MFT=17.3 |
 | `--crop` | off | Keep original canvas size during undistortion instead of expanding it. Houdini focal length and aperture remain at exact physical values (e.g. 20 mm / 36 mm). |
-| `--camera_model` | auto | COLMAP camera model (e.g. `OPENCV`, `PINHOLE`, `SIMPLE_RADIAL`) |
+| `--camera_model` | `SIMPLE_RADIAL` | COLMAP camera model (e.g. `OPENCV`, `PINHOLE`, `SIMPLE_RADIAL`) |
 | `--loop` | off | Enable loop detection in sequential matching |
 | `--loop_period` | `5` | Loop detection period |
 | `--loop_num_images` | `50` | Number of images considered per loop detection pass |
@@ -124,6 +124,15 @@ uv run python run_autotracker.py ./videos ./output \
 ## Batch Processing
 
 `batch_run.py` processes multiple folders within a target directory. Per-folder settings can be defined in a `batch_config.ini` placed in the target directory.
+
+### Folder discovery
+
+`batch_run.py` walks the target directory and treats each subfolder as a batch of videos to process. Two naming conventions are reserved:
+
+- Folders **starting with `.`** are skipped (hidden directories).
+- Folders **ending in `-output`** are skipped — they are reserved for results produced by `batch_run.py` itself (`<folder>-output/`).
+
+If you want a folder named `something-output` to be processed, rename it.
 
 ### Usage
 

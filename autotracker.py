@@ -197,6 +197,7 @@ def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mas
 
     # Compute pixel focal length (used for EXIF, camera_params, and post-BA patching)
     fl_px = None
+    real_w = real_h = None
     if focal_length_mm:
         first_img = cv2.imread(all_images[0])
         if first_img is not None:
@@ -227,16 +228,23 @@ def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mas
 
         model = camera_model or "OPENCV"
         model_upper = model.upper()
-        if model_upper in ("SIMPLE_PINHOLE", "SIMPLE_RADIAL_FISHEYE"):
+        # COLMAP camera_params layouts:
+        #   SIMPLE_PINHOLE         (f, cx, cy)
+        #   PINHOLE                (fx, fy, cx, cy)
+        #   SIMPLE_RADIAL          (f, cx, cy, k)
+        #   RADIAL                 (f, cx, cy, k1, k2)
+        #   SIMPLE_RADIAL_FISHEYE  (f, cx, cy, k)
+        #   OPENCV / OPENCV_FISHEYE and friends — 8 params (fx, fy, cx, cy, d0..d3)
+        if model_upper == "SIMPLE_PINHOLE":
             params_str = f"{fl_px},{cx},{cy}"
-            if model_upper == "SIMPLE_RADIAL_FISHEYE":
-                params_str += ",0"
-        elif model_upper in ("PINHOLE",):
+        elif model_upper == "PINHOLE":
             params_str = f"{fl_px},{fl_px},{cx},{cy}"
         elif model_upper == "SIMPLE_RADIAL":
             params_str = f"{fl_px},{cx},{cy},0"
         elif model_upper == "RADIAL":
             params_str = f"{fl_px},{cx},{cy},0,0"
+        elif model_upper == "SIMPLE_RADIAL_FISHEYE":
+            params_str = f"{fl_px},{cx},{cy},0"
         else:
             # OPENCV, OPENCV_FISHEYE, and others default to 8-param format
             params_str = f"{fl_px},{fl_px},{cx},{cy},0,0,0,0"
@@ -392,7 +400,7 @@ def main():
     parser.add_argument("--multi-cams", action="store_true", help="Allow processing multiple videos with different camera settings")
     parser.add_argument("--acescg", action="store_true", help="Convert input ACEScg colorspace to sRGB")
     parser.add_argument("--lut", help="Path to .cube LUT file for color conversion (optional)")
-    parser.add_argument("--camera_model", help="Specify COLMAP camera model (e.g., OPENCV, PINHOLE, SIMPLE_RADIAL). Default: Auto (COLMAP decides)")
+    parser.add_argument("--camera_model", default="SIMPLE_RADIAL", help="Specify COLMAP camera model (e.g., OPENCV, PINHOLE, SIMPLE_RADIAL). Default: SIMPLE_RADIAL")
     parser.add_argument("--loop", action="store_true", help="Enable COLMAP loop detection in sequential matching")
     parser.add_argument("--loop_period", type=int, default=5, help="COLMAP loop detection period (default: 5)")
     parser.add_argument("--loop_num_images", type=int, default=50, help="COLMAP loop detection number of images (default: 50)")
