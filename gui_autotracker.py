@@ -127,6 +127,7 @@ class MainWindow(QMainWindow):
             "OPENCV",
             "OPENCV_FISHEYE",
         ])
+        self.camera_model.setCurrentText("SIMPLE_RADIAL")
         form.addRow("Camera model:", self.camera_model)
 
         return w
