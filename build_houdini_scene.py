@@ -160,8 +160,22 @@ if __name__ == "__main__":
     output_hip_path  = os.path.abspath(args.output_hip_path)
 
     create_animated_camera(json_path=json_path, aperture_width=args.sensor_width_mm)
-    
-    scene = hou.node("/obj").createNode('geo', 'Scene')
+
+    # Place the point cloud geo inside the same NeRF_Import subnet as the camera,
+    # destroying any prior copy so re-runs don't accumulate Scene1, Scene2, ...
+    # If the subnet is missing, create_animated_camera bailed out early and there
+    # is nothing meaningful to save.
+    subnet = hou.node("/obj/NeRF_Import")
+    if subnet is None:
+        print("[ERROR] /obj/NeRF_Import not found — camera import failed; skipping scene save.")
+        sys.exit(1)
+    existing_scene = subnet.node("Scene")
+    if existing_scene:
+        existing_scene.destroy()
+    scene = subnet.createNode('geo', 'Scene')
     file_node = scene.createNode('file', 'Import_Point_Cloud')
     file_node.parm('file').set(point_cloud_path)
+    scene.setInput(0, subnet.indirectInputs()[0])
+    subnet.layoutChildren()
+
     hou.hipFile.save(output_hip_path)
