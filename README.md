@@ -125,6 +125,15 @@ uv run python run_autotracker.py ./videos ./output \
 
 `batch_run.py` processes multiple folders within a target directory. Per-folder settings can be defined in a `batch_config.ini` placed in the target directory.
 
+### Folder discovery
+
+`batch_run.py` walks the target directory and treats each subfolder as a batch of videos to process. Two naming conventions are reserved:
+
+- Folders **starting with `.`** are skipped (hidden directories).
+- Folders **ending in `-output`** are skipped — they are reserved for results produced by `batch_run.py` itself (`<folder>-output/`).
+
+If you want a folder named `something-output` to be processed, rename it.
+
 ### Usage
 
 ```bash
