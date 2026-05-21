@@ -83,22 +83,29 @@ def main():
         print("[ERROR] autotracker.py failed.")
         sys.exit(1)
 
+    # A scene only counts as ready for downstream steps when sparse/0/cameras.bin
+    # exists — matching the completion marker used by autotracker.py.
+    def _has_reconstruction(folder_path):
+        return os.path.exists(os.path.join(folder_path, "sparse", "0", "cameras.bin"))
+
     # Command 2: Run colmap model_converter on subfolders
     print("Scanning output directory for subfolders to convert models...")
     subfolders = [f for f in os.listdir(output_path) if os.path.isdir(os.path.join(output_path, f))]
-    
+
     for folder in subfolders:
         folder_path = os.path.join(output_path, folder)
+        if not _has_reconstruction(folder_path):
+            print(f"Skipping {folder}: no completed COLMAP reconstruction.")
+            continue
         sparse_0_path = os.path.join(folder_path, "sparse", "0")
         ply_output_path = os.path.join(folder_path, "points3D.ply")
-        
-        if os.path.exists(sparse_0_path):
-            cmd2 = ["colmap", "model_converter", "--input_path", sparse_0_path, "--output_path", ply_output_path, "--output_type", "PLY"]
-            print(f"Running: {' '.join(cmd2)}")
-            try:
-                subprocess.run(cmd2, check=True)
-            except subprocess.CalledProcessError:
-                print(f"[ERROR] colmap model_converter failed for {folder}.")
+
+        cmd2 = ["colmap", "model_converter", "--input_path", sparse_0_path, "--output_path", ply_output_path, "--output_type", "PLY"]
+        print(f"Running: {' '.join(cmd2)}")
+        try:
+            subprocess.run(cmd2, check=True)
+        except subprocess.CalledProcessError:
+            print(f"[ERROR] colmap model_converter failed for {folder}.")
 
     # Command 3: Copy colmap2nerf.py to output_path
     colmap2nerf_src = os.path.join(script_dir, "colmap2nerf.py")
@@ -118,6 +125,9 @@ def main():
     generated_jsons = []
     subfolders = [f for f in os.listdir(".") if os.path.isdir(f)]
     for folder in subfolders:
+        if not _has_reconstruction(folder):
+            print(f"Skipping {folder}: no completed COLMAP reconstruction.")
+            continue
         print(f"Processing folder: {folder}")
         json_filename = f"{folder}_transforms.json"
         cmd_nerf = [
@@ -129,8 +139,12 @@ def main():
             "--keep_colmap_coords"
         ]
         print(f"Running: {' '.join(cmd_nerf)}")
-        subprocess.run(cmd_nerf, check=False)
-        
+        try:
+            subprocess.run(cmd_nerf, check=True)
+        except subprocess.CalledProcessError:
+            print(f"[ERROR] colmap2nerf.py failed for {folder}; downstream steps will skip it.")
+            continue
+
         if os.path.exists(json_filename):
             generated_jsons.append((os.path.abspath(json_filename), folder))
 

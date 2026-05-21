@@ -86,9 +86,15 @@ def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mas
     sparse_dir = os.path.join(scene_path, "sparse")
     database_path = os.path.join(scene_path, "database.db")
 
-    # Skip if already reconstructed
-    if os.path.exists(scene_path):
+    # Skip if already reconstructed. A successful run produces sparse/0/cameras.bin;
+    # a bare scene folder without that marker means a previous run failed midway.
+    completion_marker = os.path.join(sparse_dir, "0", "cameras.bin")
+    if os.path.exists(completion_marker):
         print(f"        • Skipping \"{base_name}\" – already reconstructed.")
+        return
+    if os.path.exists(scene_path):
+        print(f"        [WARN] Skipping \"{base_name}\" – folder exists but reconstruction is incomplete.")
+        print(f"               Delete \"{scene_path}\" to retry.")
         return
 
     # Clean slate
