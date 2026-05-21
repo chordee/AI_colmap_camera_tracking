@@ -163,7 +163,12 @@ if __name__ == "__main__":
 
     # Place the point cloud geo inside the same NeRF_Import subnet as the camera,
     # destroying any prior copy so re-runs don't accumulate Scene1, Scene2, ...
+    # If the subnet is missing, create_animated_camera bailed out early and there
+    # is nothing meaningful to save.
     subnet = hou.node("/obj/NeRF_Import")
+    if subnet is None:
+        print("[ERROR] /obj/NeRF_Import not found — camera import failed; skipping scene save.")
+        sys.exit(1)
     existing_scene = subnet.node("Scene")
     if existing_scene:
         existing_scene.destroy()
