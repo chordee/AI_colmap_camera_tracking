@@ -197,6 +197,7 @@ def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mas
 
     # Compute pixel focal length (used for EXIF, camera_params, and post-BA patching)
     fl_px = None
+    real_w = real_h = None
     if focal_length_mm:
         first_img = cv2.imread(all_images[0])
         if first_img is not None:
