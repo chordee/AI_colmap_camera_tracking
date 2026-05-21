@@ -1,4 +1,6 @@
 import os
+import shlex
+import subprocess
 import sys
 from pathlib import Path
 
@@ -224,11 +226,15 @@ class MainWindow(QMainWindow):
         self.stop_btn = QPushButton("Stop")
         self.stop_btn.setEnabled(False)
         self.stop_btn.clicked.connect(self._stop)
+        self.copy_cmd_btn = QPushButton("Copy Command")
+        self.copy_cmd_btn.setToolTip("Build the equivalent CLI command from current settings and copy it to the clipboard.")
+        self.copy_cmd_btn.clicked.connect(self._copy_command)
         self.clear_log_btn = QPushButton("Clear log")
         self.clear_log_btn.clicked.connect(lambda: self.log.clear())
 
         layout.addWidget(self.start_btn)
         layout.addWidget(self.stop_btn)
+        layout.addWidget(self.copy_cmd_btn)
         layout.addStretch()
         layout.addWidget(self.clear_log_btn)
         return container
@@ -360,6 +366,19 @@ class MainWindow(QMainWindow):
     def _kill_if_still_running(self, proc: QProcess):
         if proc is not None and proc.state() != QProcess.NotRunning:
             proc.kill()
+
+    def _copy_command(self):
+        cmd = self._build_command()
+        if cmd is None:
+            return
+        # Use Windows-native quoting on win32, shlex on POSIX, so the printed
+        # command can be pasted into the user's actual shell as-is.
+        if sys.platform == "win32":
+            cmd_str = subprocess.list2cmdline(cmd)
+        else:
+            cmd_str = shlex.join(cmd)
+        QApplication.clipboard().setText(cmd_str)
+        self._append_log("\n[Copied to clipboard]\n" + cmd_str + "\n")
 
     def _on_output(self):
         if self.process is None:
