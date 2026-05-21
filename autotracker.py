@@ -228,16 +228,23 @@ def process_video(video_path, scenes_dir, idx, total, overlap=12, scale=1.0, mas
 
         model = camera_model or "OPENCV"
         model_upper = model.upper()
-        if model_upper in ("SIMPLE_RADIAL", "SIMPLE_RADIAL_FISHEYE"):
+        # COLMAP camera_params layouts:
+        #   SIMPLE_PINHOLE         (f, cx, cy)
+        #   PINHOLE                (fx, fy, cx, cy)
+        #   SIMPLE_RADIAL          (f, cx, cy, k)
+        #   RADIAL                 (f, cx, cy, k1, k2)
+        #   SIMPLE_RADIAL_FISHEYE  (f, cx, cy, k)
+        #   OPENCV / OPENCV_FISHEYE and friends — 8 params (fx, fy, cx, cy, d0..d3)
+        if model_upper == "SIMPLE_PINHOLE":
             params_str = f"{fl_px},{cx},{cy}"
-            if model_upper == "SIMPLE_RADIAL_FISHEYE":
-                params_str += ",0"
-        elif model_upper in ("PINHOLE",):
+        elif model_upper == "PINHOLE":
             params_str = f"{fl_px},{fl_px},{cx},{cy}"
         elif model_upper == "SIMPLE_RADIAL":
             params_str = f"{fl_px},{cx},{cy},0"
         elif model_upper == "RADIAL":
             params_str = f"{fl_px},{cx},{cy},0,0"
+        elif model_upper == "SIMPLE_RADIAL_FISHEYE":
+            params_str = f"{fl_px},{cx},{cy},0"
         else:
             # OPENCV, OPENCV_FISHEYE, and others default to 8-param format
             params_str = f"{fl_px},{fl_px},{cx},{cy},0,0,0,0"
