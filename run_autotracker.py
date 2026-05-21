@@ -2,7 +2,6 @@ import argparse
 import os
 import subprocess
 import sys
-import shutil
 
 def main():
     parser = argparse.ArgumentParser(description="Batch runner for autotracker and colmap conversion.")
@@ -107,31 +106,23 @@ def main():
         except subprocess.CalledProcessError:
             print(f"[ERROR] colmap model_converter failed for {folder}.")
 
-    # Command 3: Copy colmap2nerf.py to output_path
-    colmap2nerf_src = os.path.join(script_dir, "colmap2nerf.py")
-    colmap2nerf_dst = os.path.join(output_path, "colmap2nerf.py")
-    print(f"Copying {colmap2nerf_src} to {colmap2nerf_dst}")
-    try:
-        shutil.copy(colmap2nerf_src, colmap2nerf_dst)
-    except OSError as e:
-        print(f"[ERROR] Failed to copy colmap2nerf.py: {e}")
-        sys.exit(1)
-
-    # Command 4: Switch workspace and run colmap2nerf on subfolders
-    original_cwd = os.getcwd()
-    os.chdir(output_path)
-    print(f"Switched workspace to: {os.getcwd()}")
+    # Command 3: Run colmap2nerf on each completed subfolder.
+    # Invoke the script in place via an absolute path and use cwd=output_path so
+    # the JSON lands beside the scene folders without copying the script over or
+    # mutating the global cwd.
+    colmap2nerf_script = os.path.join(script_dir, "colmap2nerf.py")
 
     generated_jsons = []
-    subfolders = [f for f in os.listdir(".") if os.path.isdir(f)]
+    subfolders = [f for f in os.listdir(output_path) if os.path.isdir(os.path.join(output_path, f))]
     for folder in subfolders:
-        if not _has_reconstruction(folder):
+        folder_path = os.path.join(output_path, folder)
+        if not _has_reconstruction(folder_path):
             print(f"Skipping {folder}: no completed COLMAP reconstruction.")
             continue
         print(f"Processing folder: {folder}")
         json_filename = f"{folder}_transforms.json"
         cmd_nerf = [
-            sys.executable, "colmap2nerf.py",
+            sys.executable, colmap2nerf_script,
             "--colmap_db", os.path.join(folder, "database.db"),
             "--images", os.path.join(folder, "images"),
             "--text", os.path.join(folder, "sparse"),
@@ -140,17 +131,14 @@ def main():
         ]
         print(f"Running: {' '.join(cmd_nerf)}")
         try:
-            subprocess.run(cmd_nerf, check=True)
+            subprocess.run(cmd_nerf, check=True, cwd=output_path)
         except subprocess.CalledProcessError:
             print(f"[ERROR] colmap2nerf.py failed for {folder}; downstream steps will skip it.")
             continue
 
-        if os.path.exists(json_filename):
-            generated_jsons.append((os.path.abspath(json_filename), folder))
-
-    # Command 5: Back to original workspace and run undistortion
-    os.chdir(original_cwd)
-    print(f"Switched workspace back to: {os.getcwd()}")
+        json_abspath = os.path.join(output_path, json_filename)
+        if os.path.exists(json_abspath):
+            generated_jsons.append((json_abspath, folder))
 
     undistortion_script = os.path.join(script_dir, "undistortionNerfstudioColmap.py")
 
