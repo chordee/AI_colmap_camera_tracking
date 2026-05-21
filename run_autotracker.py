@@ -111,6 +111,9 @@ def main():
     # the JSON lands beside the scene folders without copying the script over or
     # mutating the global cwd.
     colmap2nerf_script = os.path.join(script_dir, "colmap2nerf.py")
+    if not os.path.isfile(colmap2nerf_script):
+        print(f"[ERROR] colmap2nerf.py not found at {colmap2nerf_script}")
+        sys.exit(1)
 
     generated_jsons = []
     subfolders = [f for f in os.listdir(output_path) if os.path.isdir(os.path.join(output_path, f))]
