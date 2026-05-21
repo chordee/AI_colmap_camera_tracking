@@ -149,7 +149,7 @@ def main():
         undistort_output_dir = os.path.join(output_path, folder_name, "undistort")
         cmd_undistort = [
             sys.executable, undistortion_script,
-            "--json_path", json_path,
+            "--original_json", json_path,
             "--output_dir", undistort_output_dir
         ]
         if args.crop:

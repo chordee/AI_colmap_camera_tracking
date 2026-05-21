@@ -191,7 +191,9 @@ def undistort_process(json_path, output_dir, crop=False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Undistort images and transforms.json")
-    parser.add_argument("--json_path",  type=str, required=True, help="Path to input transforms.json")
+    parser.add_argument("--original_json", type=str, required=True,
+                        help="Path to the original transforms.json (pre-undistortion). "
+                             "Same naming as restore_distortion.py's --original_json.")
     parser.add_argument("--output_dir", type=str, required=True, help="Path to output directory")
     parser.add_argument("--crop", action="store_true",
                         help="Keep original canvas size instead of expanding it.  "
@@ -200,4 +202,4 @@ if __name__ == "__main__":
                              "Corner pixels that fall outside the distorted image "
                              "will appear black.")
     args = parser.parse_args()
-    undistort_process(args.json_path, args.output_dir, crop=args.crop)
+    undistort_process(args.original_json, args.output_dir, crop=args.crop)
