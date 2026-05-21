@@ -175,6 +175,7 @@ if __name__ == "__main__":
     scene = subnet.createNode('geo', 'Scene')
     file_node = scene.createNode('file', 'Import_Point_Cloud')
     file_node.parm('file').set(point_cloud_path)
+    scene.setInput(0, subnet.indirectInputs()[0])
     subnet.layoutChildren()
 
     hou.hipFile.save(output_hip_path)
