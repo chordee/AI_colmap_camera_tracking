@@ -5,10 +5,12 @@ import os
 import re
 import sys
 
-def create_animated_camera(json_path, global_scale=1, cam_name="Nerfstudio_Animated_Cam", aperture_width=36.0):
+def create_animated_camera(json_path, aperture_width=36.0):
+    cam_name = "Nerfstudio_Animated_Cam"
+
     # 1. Check file
     if not os.path.exists(json_path):
-        hou.ui.displayMessage(f"Error: File not found at:\n{json_path}")
+        print(f"[ERROR] JSON file not found: {json_path}")
         return
 
     print(f"Loading JSON: {json_path}")
@@ -65,16 +67,26 @@ def create_animated_camera(json_path, global_scale=1, cam_name="Nerfstudio_Anima
     winx = (img_w / 2 - cx) / img_w
     winy = (img_h / 2 - cy) / img_w   # note: divided by img_w, same unit as winx
 
-    # Map COLMAP world (Y down) into Houdini world (Y up). colmap2nerf already
-    # converted the camera basis to the OpenGL convention (Y up, Z back) via
-    # M @ diag(1,-1,-1,1), even under --keep_colmap_coords, but the world frame
-    # is still COLMAP's. A single world Y flip on the row-major c2w matrix
-    # aligns the two.
-    opencv_to_houdini = hou.Matrix4((
-        (1,  0, 0, 0),
-        (0, -1, 0, 0),
-        (0,  0, 1, 0),
-        (0,  0, 0, 1),
+    # Convert COLMAP/OpenCV world into Houdini world. colmap2nerf already put the
+    # camera basis in the OpenGL convention (Y up, Z back) via M @ diag(1,-1,-1,1),
+    # even under --keep_colmap_coords, but the world frame is still COLMAP's.
+    #
+    # The correct world conversion is a *proper rotation* (det = +1) applied
+    # identically to the camera and the point cloud — Rx(180) = diag(1,-1,-1),
+    # i.e. flip both Y and Z. This is the standard COLMAP/OpenCV -> OpenGL/Houdini
+    # rigid transform (Blender's COLMAP importer uses the same).
+    #
+    # A reflection like a Y-only flip (det = -1) cannot work: it mirrors the
+    # rendered image, and no camera-basis tweak fixes it — you can only trade an
+    # upside-down image for a left/right-mirrored one. Flipping Y *and* Z keeps
+    # the determinant +1, so the camera stays a valid rotation and the view is
+    # both upright and un-mirrored. (Sanity check: an identity COLMAP camera,
+    # M = diag(1,-1,-1,1), maps to the Houdini identity camera — looks -Z, up +Y.)
+    flip_yz = hou.Matrix4((
+        (1,  0,  0, 0),
+        (0, -1,  0, 0),
+        (0,  0, -1, 0),
+        (0,  0,  0, 1),
     ))
 
     # 3. Create Houdini nodes
@@ -111,7 +123,10 @@ def create_animated_camera(json_path, global_scale=1, cam_name="Nerfstudio_Anima
             f_num = get_frame_num(frame_data)
 
             # Read matrix
-            raw_mtx = frame_data["transform_matrix"]
+            raw_mtx = frame_data.get("transform_matrix")
+            if raw_mtx is None:
+                print(f"Warning: frame {f_num} has no transform_matrix; skipping.")
+                continue
 
             if isinstance(raw_mtx[0], list):
                 flat_mtx = [item for sublist in raw_mtx for item in sublist]
@@ -119,17 +134,15 @@ def create_animated_camera(json_path, global_scale=1, cam_name="Nerfstudio_Anima
                 flat_mtx = raw_mtx
 
             # Convert to Houdini Matrix4, transpose (Column-Major -> Row-Major),
-            # then post-multiply by the OpenCV->Houdini world Y-flip.
-            h_mtx = hou.Matrix4(tuple(flat_mtx)).transposed() * opencv_to_houdini
+            # then apply the COLMAP -> Houdini world rotation (flip Y and Z).
+            h_mtx = hou.Matrix4(tuple(flat_mtx)).transposed() * flip_yz
 
             # Extract transform data
             tra = h_mtx.extractTranslates()
             rot = h_mtx.extractRotates()
 
-            # Prepare values (apply scaling)
-            tx = tra[0] * global_scale
-            ty = tra[1] * global_scale
-            tz = tra[2] * global_scale
+            # Prepare values
+            tx, ty, tz = tra[0], tra[1], tra[2]
             rx, ry, rz = rot
 
             # Set Keyframes
@@ -144,7 +157,7 @@ def create_animated_camera(json_path, global_scale=1, cam_name="Nerfstudio_Anima
                 
                 cam.parm(p_name).setKeyframe(k)
 
-    # 6. Set scene range
+    # 5. Set scene range
     start_frame = get_frame_num(frames[0])
     end_frame = get_frame_num(frames[-1])
     
@@ -188,13 +201,15 @@ if __name__ == "__main__":
     scene = subnet.createNode('geo', 'Scene')
     file_node = scene.createNode('file', 'Import_Point_Cloud')
     file_node.parm('file').set(point_cloud_path)
-    # COLMAP world Y-down -> Houdini world Y-up. Same flip applied to the
-    # camera matrix above; do it here on the geo side via a Transform SOP.
-    flip_y = scene.createNode('xform', 'COLMAP_to_Houdini')
-    flip_y.parm('sy').set(-1)
-    flip_y.setInput(0, file_node)
-    flip_y.setDisplayFlag(True)
-    flip_y.setRenderFlag(True)
+    # COLMAP -> Houdini world rotation (flip Y and Z), matching the camera
+    # matrix above. Scale (1,-1,-1) is Rx(180), a proper rotation, so the point
+    # cloud and camera stay consistent and the view is un-mirrored.
+    flip_node = scene.createNode('xform', 'COLMAP_to_Houdini')
+    flip_node.parm('sy').set(-1)
+    flip_node.parm('sz').set(-1)
+    flip_node.setInput(0, file_node)
+    flip_node.setDisplayFlag(True)
+    flip_node.setRenderFlag(True)
     scene.setInput(0, subnet.indirectInputs()[0])
     subnet.layoutChildren()
 
