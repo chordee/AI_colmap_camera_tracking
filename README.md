@@ -10,7 +10,7 @@ Automated pipeline for camera tracking and scene reconstruction using COLMAP and
 - **Sparse Reconstruction:** Uses **COLMAP Global Mapper** (requires COLMAP 4.0+).
 - **NeRF Conversion:** Converts COLMAP data to `transforms.json` (NeRF format).
 - **Undistortion:** Expands the undistorted canvas to preserve all valid pixels while keeping the focal length unchanged. Optionally crops to the original canvas size (`--crop`).
-- **Houdini Integration:** Automatically generates a Houdini `.hip` scene with the reconstructed point cloud and animated camera. Correctly handles sensor size, canvas expansion, and principal-point offset.
+- **Houdini Integration:** Automatically generates a Houdini `.hip` scene with the reconstructed point cloud and animated camera. Converts COLMAP/OpenCV coordinates to Houdini's Y-up world, and correctly handles sensor size, canvas expansion, and principal-point offset.
 
 ## Prerequisites
 
@@ -217,7 +217,7 @@ Processes `./demo-test/walking-forest` and outputs to `./demo-test/walking-fores
 6. **Undistortion** — `undistortionNerfstudioColmap.py` removes lens distortion.
    - Default: canvas is expanded to include all valid pixels; `sensor_w`/`sensor_h` are recorded so downstream tools can recover the physical focal length.
    - `--crop`: keeps the original canvas size; Houdini focal length and aperture remain at their exact physical values (e.g. 20 mm / 36 mm).
-7. **Houdini scene** — `build_houdini_scene.py` imports the point cloud and creates an animated camera with correct focal length, aperture, and principal-point offset.
+7. **Houdini scene** — `build_houdini_scene.py` imports the point cloud and creates an animated camera with correct focal length, aperture, and principal-point offset. Both the camera and point cloud are converted from COLMAP/OpenCV space to Houdini's Y-up world via an `Rx(180)` rotation (flip Y and Z), so the scene appears upright and un-mirrored.
 
 ## Scripts Overview
 
