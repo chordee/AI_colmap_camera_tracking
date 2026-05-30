@@ -211,9 +211,6 @@ class MainWindow(QMainWindow):
         self.hfs = PathPicker(mode="dir")
         form.addRow("Houdini install (HFS):", self.hfs)
 
-        self.multi_cams = QCheckBox("Treat each video as a separate camera (multi-cams)")
-        form.addRow(self.multi_cams)
-
         return w
 
     def _build_buttons(self) -> QWidget:
@@ -300,8 +297,6 @@ class MainWindow(QMainWindow):
             cmd.append("--skip-houdini")
         if not self._append_path(cmd, "--hfs", self.hfs.text(), "Houdini install (HFS)", expect_dir=True):
             return None
-        if self.multi_cams.isChecked():
-            cmd.append("--multi-cams")
 
         return cmd
 
